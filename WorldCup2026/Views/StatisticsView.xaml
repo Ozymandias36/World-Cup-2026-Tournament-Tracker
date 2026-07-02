@@ -1,0 +1,219 @@
+<UserControl x:Class="WorldCup2026.Views.StatisticsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:lvc="clr-namespace:LiveChartsCore.SkiaSharpView.WPF;assembly=LiveChartsCore.SkiaSharpView.WPF"
+             mc:Ignorable="d"
+             d:DesignHeight="500" d:DesignWidth="1100">
+
+    <Grid>
+        <!-- Empty state -->
+        <TextBlock x:Name="EmptyState"
+                   Text="Waiting for tournament data..."
+                   FontSize="16" Foreground="Gray"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+
+        <!-- Stats TabControl -->
+        <TabControl x:Name="StatsTabControl"
+                    Visibility="Collapsed"
+                    BorderBrush="#e0e0e0"
+                    Background="White">
+            <TabControl.Resources>
+                <Style TargetType="TabItem">
+                    <Setter Property="FontWeight" Value="SemiBold" />
+                    <Setter Property="FontSize" Value="13" />
+                    <Setter Property="Padding" Value="14,6" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="TabItem">
+                                <Border Background="{TemplateBinding Background}"
+                                        BorderBrush="#e0e0e0"
+                                        BorderThickness="1,1,1,0"
+                                        CornerRadius="4,4,0,0"
+                                        Padding="{TemplateBinding Padding}"
+                                        Margin="0,2,0,0">
+                                    <ContentPresenter ContentSource="Header" />
+                                </Border>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                    <Style.Triggers>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter Property="Background" Value="{StaticResource PrimaryBrush}" />
+                            <Setter Property="Foreground" Value="White" />
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </TabControl.Resources>
+
+            <!-- Tab 1: Goal Scorers Chart -->
+            <TabItem Header="Top Scorers">
+                <Grid Margin="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="250" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="Golden Boot Race"
+                               FontSize="16" FontWeight="Bold"
+                               Foreground="{StaticResource PrimaryBrush}" Margin="0,0,0,8" />
+
+                    <!-- Bar chart -->
+                    <lvc:CartesianChart Grid.Row="1"
+                        Series="{Binding GoalScorersSeries}"
+                        XAxes="{Binding XAxes}"
+                        Margin="0,0,0,8" />
+
+                    <TextBlock Grid.Row="2" Text="Top Goal Scorers"
+                               FontSize="14" FontWeight="Bold"
+                               Foreground="{StaticResource PrimaryBrush}" Margin="0,8,0,4" />
+
+                    <!-- Goal scorers table -->
+                    <DataGrid Grid.Row="3" ItemsSource="{Binding TopScorers}"
+                              AutoGenerateColumns="False" IsReadOnly="True"
+                              RowBackground="White"
+                              AlternatingRowBackground="#f5f5f5"
+                              HeadersVisibility="Column"
+                              GridLinesVisibility="Horizontal"
+                              BorderThickness="0"
+                              CanUserResizeRows="False">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="#" Width="40"
+                                Binding="{Binding}" />
+                            <DataGridTextColumn Header="Player" Width="200"
+                                Binding="{Binding PlayerName}" />
+                            <DataGridTextColumn Header="Team" Width="100"
+                                Binding="{Binding TeamCode}" />
+                            <DataGridTextColumn Header="Goals" Width="60"
+                                Binding="{Binding Goals}" />
+                            <DataGridTextColumn Header="Assists" Width="60"
+                                Binding="{Binding Assists}" />
+                            <DataGridTextColumn Header="Matches" Width="70"
+                                Binding="{Binding MatchesPlayed}" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+
+            <!-- Tab 2: Assists -->
+            <TabItem Header="Top Assists">
+                <Grid Margin="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="Assist Leaders"
+                               FontSize="16" FontWeight="Bold"
+                               Foreground="{StaticResource PrimaryBrush}" Margin="0,0,0,8" />
+
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding TopAssists}"
+                              AutoGenerateColumns="False" IsReadOnly="True"
+                              RowBackground="White"
+                              AlternatingRowBackground="#f5f5f5"
+                              HeadersVisibility="Column"
+                              GridLinesVisibility="Horizontal"
+                              BorderThickness="0">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="#" Width="40" />
+                            <DataGridTextColumn Header="Player" Width="200"
+                                Binding="{Binding PlayerName}" />
+                            <DataGridTextColumn Header="Team" Width="100"
+                                Binding="{Binding TeamCode}" />
+                            <DataGridTextColumn Header="Assists" Width="70"
+                                Binding="{Binding Assists}" />
+                            <DataGridTextColumn Header="Goals" Width="60"
+                                Binding="{Binding Goals}" />
+                            <DataGridTextColumn Header="Matches" Width="70"
+                                Binding="{Binding MatchesPlayed}" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+
+            <!-- Tab 3: Discipline -->
+            <TabItem Header="Discipline">
+                <Grid Margin="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="Cards &amp; Discipline"
+                               FontSize="16" FontWeight="Bold"
+                               Foreground="{StaticResource PrimaryBrush}" Margin="0,0,0,8" />
+
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding MostCards}"
+                              AutoGenerateColumns="False" IsReadOnly="True"
+                              RowBackground="White"
+                              AlternatingRowBackground="#f5f5f5"
+                              HeadersVisibility="Column"
+                              GridLinesVisibility="Horizontal"
+                              BorderThickness="0">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="#" Width="40" />
+                            <DataGridTextColumn Header="Player" Width="200"
+                                Binding="{Binding PlayerName}" />
+                            <DataGridTextColumn Header="Team" Width="100"
+                                Binding="{Binding TeamCode}" />
+                            <DataGridTextColumn Header="Yellow" Width="60"
+                                Binding="{Binding YellowCards}" />
+                            <DataGridTextColumn Header="Red" Width="50"
+                                Binding="{Binding RedCards}" />
+                            <DataGridTextColumn Header="Matches" Width="70"
+                                Binding="{Binding MatchesPlayed}" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+
+            <!-- Tab 4: Team Stats -->
+            <TabItem Header="Team Stats">
+                <Grid Margin="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="250" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0" Text="Team Offensive Performance"
+                               FontSize="16" FontWeight="Bold"
+                               Foreground="{StaticResource PrimaryBrush}" Margin="0,0,0,8" />
+
+                    <lvc:CartesianChart Grid.Row="1"
+                        Series="{Binding TeamGoalsSeries}"
+                        Margin="0,0,0,8" />
+
+                    <TextBlock Grid.Row="2" Text="Team Statistics"
+                               FontSize="14" FontWeight="Bold"
+                               Foreground="{StaticResource PrimaryBrush}" Margin="0,8,0,4" />
+
+                    <DataGrid Grid.Row="3" ItemsSource="{Binding TeamStats}"
+                              AutoGenerateColumns="False" IsReadOnly="True"
+                              RowBackground="White"
+                              AlternatingRowBackground="#f5f5f5"
+                              HeadersVisibility="Column"
+                              GridLinesVisibility="Horizontal"
+                              BorderThickness="0">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Team" Width="150"
+                                Binding="{Binding TeamName}" />
+                            <DataGridTextColumn Header="GF" Width="50"
+                                Binding="{Binding GoalsFor}" />
+                            <DataGridTextColumn Header="GA" Width="50"
+                                Binding="{Binding GoalsAgainst}" />
+                            <DataGridTextColumn Header="GD" Width="50"
+                                Binding="{Binding GoalDifference}" />
+                            <DataGridTextColumn Header="Clean Sheets" Width="90"
+                                Binding="{Binding CleanSheets}" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</UserControl>

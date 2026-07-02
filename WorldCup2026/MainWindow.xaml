@@ -1,0 +1,92 @@
+<Window x:Class="WorldCup2026.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:WorldCup2026"
+        xmlns:views="clr-namespace:WorldCup2026.Views"
+        mc:Ignorable="d"
+        Title="FIFA World Cup 2026™ — Tournament Tracker"
+        Height="900" Width="1400"
+        MinHeight="600" MinWidth="1000"
+        WindowStartupLocation="CenterScreen"
+        WindowState="Maximized"
+        Background="{StaticResource BgLightBrush}">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Toolbar -->
+        <Border Grid.Row="0" Background="{StaticResource PrimaryBrush}" Padding="12,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="FIFA WORLD CUP 2026™"
+                               FontSize="20" FontWeight="Bold"
+                               Foreground="White" VerticalAlignment="Center" />
+                    <TextBlock Text="CANADA • MEXICO • USA"
+                               FontSize="13" Foreground="{StaticResource AccentBrush}"
+                               VerticalAlignment="Center" Margin="15,0,0,0" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal"
+                            HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock x:Name="StatusLabel"
+                               FontSize="12" Foreground="#a0c4e8"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="RefreshBtn" Content="Refresh"
+                            Style="{StaticResource ToolbarButton}"
+                            Margin="0,0,5,0" />
+                    <Button x:Name="AutoBtn" Style="{StaticResource ToolbarButton}" Margin="0,0,5,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="⏱ " Foreground="White" />
+                            <TextBlock x:Name="AutoLabel" Text="Auto: OFF" Foreground="White" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="ExportBtn" Content="📥 Export PDF"
+                            Style="{StaticResource ToolbarButton}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Main Content -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="12">
+                <!-- Section 1: Bracket Tree -->
+                <Border Background="{StaticResource CardBgBrush}" CornerRadius="8"
+                        Padding="12" Margin="0,0,0,10"
+                        BorderBrush="#e0e0e0" BorderThickness="1">
+                    <StackPanel>
+                        <TextBlock Text="Knockout Stage Bracket" Style="{StaticResource SectionTitle}" />
+                        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
+                                      MaxHeight="800">
+                            <views:BracketView x:Name="BracketSection" />
+                        </ScrollViewer>
+                    </StackPanel>
+                </Border>
+
+                <!-- Section 2: Group Stage -->
+                <Border Background="{StaticResource CardBgBrush}" CornerRadius="8"
+                        Padding="12" Margin="0,0,0,10"
+                        BorderBrush="#e0e0e0" BorderThickness="1">
+                    <StackPanel>
+                        <TextBlock Text="Group Stage Results" Style="{StaticResource SectionTitle}" />
+                        <views:GroupStageView x:Name="GroupSection" />
+                    </StackPanel>
+                </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Window>
