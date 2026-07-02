@@ -71,9 +71,9 @@ public class PdfExportService
 
         // ── Single-page layout: bracket on top, group standings below ──
         const float margin = 15f;
-        const float titleH = 86f;
+        const float titleH = 100f;
         const float sectionGap = 12f;
-        const float groupsTitleH = 24f;
+        const float groupsTitleH = 30f;
         const float groupsGridH = 330f;
         const float footerH = 16f;
 
@@ -102,7 +102,7 @@ public class PdfExportService
         using var mainTitlePaint = new SKPaint { Color = SKColor.Parse("#1a365d"), TextSize = 50, IsAntialias = true, Typeface = cjkTypeface, FakeBoldText = true, TextAlign = SKTextAlign.Center };
         canvas.DrawText("2026年美加墨世界杯赛程", PdfW / 2, margin + 46, mainTitlePaint);
         using var pageTitlePaint = new SKPaint { Color = SKColor.Parse("#888888"), TextSize = 26, IsAntialias = true, Typeface = cjkTypeface, TextAlign = SKTextAlign.Center };
-        canvas.DrawText("淘汰赛对阵图", PdfW / 2, margin + 80, pageTitlePaint);
+        canvas.DrawText("淘汰赛对阵图", PdfW / 2, margin + 96, pageTitlePaint);
 
         // Colors
         using var linePaint = new SKPaint { Color = SKColor.Parse("#b0b0b0"), StrokeWidth = Math.Max(1f, 1.2f * scale), IsAntialias = true, Style = SKPaintStyle.Stroke };
@@ -255,8 +255,8 @@ public class PdfExportService
         if (groups.Count > 0)
         {
             float groupsTitleY = bracketAreaTop + bracketAreaH + sectionGap;
-            using var groupsTitlePaint = new SKPaint { Color = SKColor.Parse("#888888"), TextSize = 18, IsAntialias = true, Typeface = cjkTypeface, FakeBoldText = true, TextAlign = SKTextAlign.Center };
-            canvas.DrawText("小组赛积分榜", PdfW / 2, groupsTitleY + 14, groupsTitlePaint);
+            using var groupsTitlePaint = new SKPaint { Color = SKColor.Parse("#888888"), TextSize = 26, IsAntialias = true, Typeface = cjkTypeface, FakeBoldText = true, TextAlign = SKTextAlign.Center };
+            canvas.DrawText("小组赛积分榜", PdfW / 2, groupsTitleY + 20, groupsTitlePaint);
 
             float gridTop = groupsTitleY + groupsTitleH;
             const int cols = 6, rows = 2;
