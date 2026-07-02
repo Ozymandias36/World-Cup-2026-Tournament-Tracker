@@ -258,7 +258,7 @@ public partial class BracketView : UserControl
         var txt = new TextBlock { Text = label, FontSize = 11, FontWeight = isWin ? FontWeights.Bold : FontWeights.Normal, Foreground = isWin ? new SolidColorBrush(Colors.DarkGreen) : Brushes.Black, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 0, 0) };
         Grid.SetColumn(txt, 1); row.Children.Add(txt);
 
-        var sc = new TextBlock { Text = scoreText, FontSize = 10, FontWeight = isWin ? FontWeights.Bold : FontWeights.Normal, Width = 42, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+        var sc = new TextBlock { Text = scoreText, FontSize = 10, FontWeight = isWin ? FontWeights.Bold : FontWeights.Normal, MinWidth = 26, TextAlignment = TextAlignment.Left, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(sc, 2); row.Children.Add(sc);
         return row;
     }
