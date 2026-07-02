@@ -187,7 +187,7 @@ public class DataServiceAggregator
         {"England","英格兰"},{"Croatia","克罗地亚"},{"Ghana","加纳"},{"Panama","巴拿马"},
         // FIFA API specific names
         {"Korea Republic","韩国"},{"Czechia","捷克"},{"Côte d'Ivoire","科特迪瓦"},
-        {"Congo DR","刚果(金)"},{"USA","美国"},
+        {"Congo DR","刚果(金)"},
     };
 
     private static void ConvertToChinese(List<Match> matches)
