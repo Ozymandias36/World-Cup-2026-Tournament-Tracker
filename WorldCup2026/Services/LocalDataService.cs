@@ -115,6 +115,8 @@ public class LocalDataService : IDataService
                     AwayFlagUrl = at?.FlagUrl ?? "",
                     HomeScore = m.TryGetProperty("home_score", out var hs) && hs.ValueKind == JsonValueKind.Number ? hs.GetInt32() : null,
                     AwayScore = m.TryGetProperty("away_score", out var aws) && aws.ValueKind == JsonValueKind.Number ? aws.GetInt32() : null,
+                    HomePenalties = m.TryGetProperty("home_penalty", out var hp) && hp.ValueKind == JsonValueKind.Number ? hp.GetInt32() : null,
+                    AwayPenalties = m.TryGetProperty("away_penalty", out var ap) && ap.ValueKind == JsonValueKind.Number ? ap.GetInt32() : null,
                     Stage = stage,
                     Group = m.TryGetProperty("group", out var g) ? g.GetString() ?? "" : "",
                     Matchday = m.TryGetProperty("matchday", out var md) && md.TryGetInt32(out var mdv) ? mdv : 1,
