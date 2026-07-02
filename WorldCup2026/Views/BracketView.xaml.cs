@@ -54,14 +54,15 @@ public partial class BracketView : UserControl
         EmptyState.Visibility = Visibility.Collapsed;
 
         var pos = new Dictionary<string, Point>();
+        double startY = finalRound?.Matches.Count > 0 ? 200 : 20;
 
         // ── Upper half: left → right ──
-        Layout(upperRounds, 10, 20, false, pos, "U");
+        Layout(upperRounds, 10, startY, false, pos, "U");
         double upperRight = 10 + (upperRounds.Count - 1) * ColW + MatchW;
 
         // ── Lower half: right ← left (mirrored) ──
         double lowerStart = upperRight + HalfGap;
-        Layout(lowerRounds, lowerStart, 20, true, pos, "L");
+        Layout(lowerRounds, lowerStart, startY, true, pos, "L");
         double lowerLeft = lowerStart;
 
         // ── Connectors ──
@@ -98,14 +99,17 @@ public partial class BracketView : UserControl
 
         // ── Size ──
         double r = lowerRounds.Count > 0 ? lowerStart + (lowerRounds.Count - 1) * ColW + MatchW : upperRight;
-        double w = Math.Max(r, fX + MatchW) + 200;
-        double h = Math.Max(pos.Values.Max(p => p.Y) + MatchH + 60, 500);
+        double w = Math.Max(r, fX + MatchW) + 20;
+        double h = Math.Max(pos.Values.Max(p => p.Y) + MatchH + 60, 400);
         Canvas.Width = w; Canvas.Height = h;
 
-        // ── Trophy ──
-        double tx = fX > 0 ? fX + MatchW + 40 : r + 30;
-        double ty = fY > 0 ? fY - 130 : h / 2 - 100;
-        RenderTrophy(tx, ty);
+        // ── Trophy above Final ──
+        if (fX > 0)
+        {
+            double tc = fX + MatchW / 2;
+            double ty = fY - 190;
+            RenderTrophy(tc, ty);
+        }
     }
 
     // ── Layout a half ──
@@ -242,16 +246,52 @@ public partial class BracketView : UserControl
 
     private void RenderTrophy(double cx, double cy)
     {
-        var t = new Canvas { Width = 180, Height = 130 };
-        t.Children.Add(new Rectangle { Width = 50, Height = 8, Fill = Gold(), RadiusX = 2, RadiusY = 2 }); Canvas.SetLeft(t.Children[^1], 65); Canvas.SetTop(t.Children[^1], 117);
-        t.Children.Add(new Rectangle { Width = 8, Height = 40, Fill = Gold() }); Canvas.SetLeft(t.Children[^1], 86); Canvas.SetTop(t.Children[^1], 77);
-        t.Children.Add(new Ellipse { Width = 55, Height = 50, Fill = Gold(), Stroke = DarkGold(), StrokeThickness = 2 }); Canvas.SetLeft(t.Children[^1], 62); Canvas.SetTop(t.Children[^1], 28);
-        t.Children.Add(new Ellipse { Width = 30, Height = 30, Stroke = DarkGold(), StrokeThickness = 1 }); Canvas.SetLeft(t.Children[^1], 75); Canvas.SetTop(t.Children[^1], 38);
-        t.Children.Add(new Ellipse { Width = 22, Height = 24, Fill = Gold(), Stroke = DarkGold(), StrokeThickness = 1.5 }); Canvas.SetLeft(t.Children[^1], 79); Canvas.SetTop(t.Children[^1], 5);
-        Canvas.SetLeft(t, cx); Canvas.SetTop(t, cy); Canvas.Children.Add(t);
-        var lb = new TextBlock { Text = "CHAMPION", FontSize = 14, FontWeight = FontWeights.Bold, Foreground = Gold(), Width = 180, TextAlignment = TextAlignment.Center };
-        Canvas.SetLeft(lb, cx); Canvas.SetTop(lb, cy + 135); Canvas.Children.Add(lb);
+        var g = new SolidColorBrush(Color.FromRgb(0xd4, 0xb0, 0x42));
+        var gd = new SolidColorBrush(Color.FromRgb(0xb0, 0x8a, 0x28));
+        var gl = new SolidColorBrush(Color.FromRgb(0xf0, 0xd8, 0x68));
+        var mg = new SolidColorBrush(Color.FromRgb(0x2e, 0x6b, 0x4e));
+        var c = new Canvas { Width = 100, Height = 170 };
+
+        // Globe
+        c.Children.Add(new Ellipse { Width = 18, Height = 18, Fill = gl, Stroke = gd, StrokeThickness = 1 }); Canvas.SetLeft(c.Children[^1], 41); Canvas.SetTop(c.Children[^1], 0);
+        // Globe band
+        c.Children.Add(new Rectangle { Width = 18, Height = 4, Fill = g, Opacity = 0.5 }); Canvas.SetLeft(c.Children[^1], 41); Canvas.SetTop(c.Children[^1], 7);
+        // Globe stem
+        c.Children.Add(new Rectangle { Width = 2, Height = 5, Fill = gd }); Canvas.SetLeft(c.Children[^1], 49); Canvas.SetTop(c.Children[^1], 18);
+
+        // Left wing figure
+        c.Children.Add(new Path { Data = Geometry.Parse("M 38,60 C 33,55 28,48 26,40 C 24,33 27,28 33,27 C 37,27 40,31 43,36 C 45,40 45,47 43,54 C 41,59 38,60 38,60 Z"), Fill = g, Stroke = gd, StrokeThickness = 0.7 });
+        // Right wing figure
+        c.Children.Add(new Path { Data = Geometry.Parse("M 62,60 C 67,55 72,48 74,40 C 76,33 73,28 67,27 C 63,27 60,31 57,36 C 55,40 55,47 57,54 C 59,59 62,60 62,60 Z"), Fill = g, Stroke = gd, StrokeThickness = 0.7 });
+
+        // Cup body
+        c.Children.Add(new Path { Data = Geometry.Parse("M 33,60 C 33,48 36,38 42,34 C 45,32 49,28 50,25 L 50,25 C 51,28 55,32 58,34 C 64,38 67,48 67,60 C 67,67 65,72 62,75 L 38,75 C 35,72 33,67 33,60 Z"), Fill = g, Stroke = gd, StrokeThickness = 1 });
+        // Cup highlight
+        c.Children.Add(new Path { Data = Geometry.Parse("M 39,62 C 39,54 42,46 47,43 L 50,43 C 45,46 43,52 43,62 C 43,66 44,70 42,72 L 40,72 C 39,69 39,65 39,62 Z"), Fill = gl, Opacity = 0.3 });
+
+        // Stem
+        c.Children.Add(new Path { Data = Geometry.Parse("M 45,75 L 55,75 L 53,90 L 51,96 L 49,96 L 47,90 Z"), Fill = g, Stroke = gd, StrokeThickness = 0.7 });
+        // Stem ring
+        c.Children.Add(new Rectangle { Width = 18, Height = 5, Fill = gl, Stroke = gd, StrokeThickness = 0.7, RadiusX = 1, RadiusY = 1 }); Canvas.SetLeft(c.Children[^1], 41); Canvas.SetTop(c.Children[^1], 79);
+
+        // Base — 5 tiers (gold + malachite)
+        c.Children.Add(new Rectangle { Width = 30, Height = 6, Fill = g, Stroke = gd, StrokeThickness = 0.7, RadiusX = 1, RadiusY = 1 }); Canvas.SetLeft(c.Children[^1], 35); Canvas.SetTop(c.Children[^1], 95);
+        c.Children.Add(new Rectangle { Width = 36, Height = 7, Fill = mg, RadiusX = 1, RadiusY = 1 }); Canvas.SetLeft(c.Children[^1], 32); Canvas.SetTop(c.Children[^1], 101);
+        c.Children.Add(new Rectangle { Width = 42, Height = 6, Fill = g, Stroke = gd, StrokeThickness = 0.7, RadiusX = 1, RadiusY = 1 }); Canvas.SetLeft(c.Children[^1], 29); Canvas.SetTop(c.Children[^1], 108);
+        c.Children.Add(new Rectangle { Width = 48, Height = 7, Fill = mg, RadiusX = 1, RadiusY = 1 }); Canvas.SetLeft(c.Children[^1], 26); Canvas.SetTop(c.Children[^1], 114);
+        c.Children.Add(new Rectangle { Width = 54, Height = 6, Fill = g, Stroke = gd, StrokeThickness = 0.7, RadiusX = 2, RadiusY = 2 }); Canvas.SetLeft(c.Children[^1], 23); Canvas.SetTop(c.Children[^1], 121);
+        // Bottom rim
+        c.Children.Add(new Rectangle { Width = 58, Height = 3, Fill = gd, RadiusX = 1, RadiusY = 1 }); Canvas.SetLeft(c.Children[^1], 21); Canvas.SetTop(c.Children[^1], 127);
+
+        // Globe sparkle
+        c.Children.Add(new Ellipse { Width = 4, Height = 3, Fill = Brushes.White, Opacity = 0.5 }); Canvas.SetLeft(c.Children[^1], 45); Canvas.SetTop(c.Children[^1], 3);
+
+        Canvas.SetLeft(c, cx - 50); Canvas.SetTop(c, cy); Canvas.Children.Add(c);
+
+        // Labels
+        var t1 = new TextBlock { Text = "FIFA WORLD CUP", FontSize = 12, FontWeight = FontWeights.Bold, Foreground = gd, Width = 180, TextAlignment = TextAlignment.Center };
+        Canvas.SetLeft(t1, cx - 90); Canvas.SetTop(t1, cy + 134); Canvas.Children.Add(t1);
+        var t2 = new TextBlock { Text = "CHAMPION 2026™", FontSize = 10, Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x88)), Width = 180, TextAlignment = TextAlignment.Center };
+        Canvas.SetLeft(t2, cx - 90); Canvas.SetTop(t2, cy + 150); Canvas.Children.Add(t2);
     }
-    private static SolidColorBrush Gold() => new(Color.FromRgb(0xc8, 0xa9, 0x51));
-    private static SolidColorBrush DarkGold() => new(Color.FromRgb(0xa0, 0x85, 0x35));
 }
