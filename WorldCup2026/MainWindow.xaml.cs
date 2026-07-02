@@ -42,11 +42,15 @@ public partial class MainWindow : Window
 
         UpdateStatusDisplay();
 
-        // Initial data load
+        // Initial data load (local baseline)
         await RefreshDataAsync();
 
-        // Start auto-refresh
+        // Start auto-refresh (fires immediately, then every 60s)
         _aggregator.StartAutoRefresh(TimeSpan.FromSeconds(60));
+
+        // Trigger a second refresh after a short delay to pick up live scores
+        _ = Task.Run(async () => { await Task.Delay(2000); await RefreshDataAsync(); });
+
         UpdateStatusDisplay();
     }
 
