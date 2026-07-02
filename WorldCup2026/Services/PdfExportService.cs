@@ -100,9 +100,9 @@ public class PdfExportService
         canvas.Clear(SKColors.White);
 
         using var mainTitlePaint = new SKPaint { Color = SKColor.Parse("#1a365d"), TextSize = 50, IsAntialias = true, Typeface = cjkTypeface, FakeBoldText = true, TextAlign = SKTextAlign.Center };
-        canvas.DrawText("2026年美加墨世界杯赛程", PdfW / 2, margin + 46, mainTitlePaint);
+        canvas.DrawText(LocalizationService.T("PdfMainTitle"), PdfW / 2, margin + 46, mainTitlePaint);
         using var pageTitlePaint = new SKPaint { Color = SKColor.Parse("#888888"), TextSize = 26, IsAntialias = true, Typeface = cjkTypeface, TextAlign = SKTextAlign.Center };
-        canvas.DrawText("淘汰赛对阵图", PdfW / 2, margin + 96, pageTitlePaint);
+        canvas.DrawText(LocalizationService.T("PdfBracketSubtitle"), PdfW / 2, margin + 96, pageTitlePaint);
 
         // Colors
         using var linePaint = new SKPaint { Color = SKColor.Parse("#b0b0b0"), StrokeWidth = Math.Max(1f, 1.2f * scale), IsAntialias = true, Style = SKPaintStyle.Stroke };
@@ -190,7 +190,7 @@ public class PdfExportService
                 bool isWin = m.HasPenalties && score.HasValue && opp.HasValue && score == opp
                     ? (pen.HasValue && oppPen.HasValue && pen > oppPen)
                     : (score.HasValue && opp.HasValue && score > opp);
-                var label = !string.IsNullOrEmpty(name) ? name : "—";
+                var label = LocalizationService.TeamName(name, code);
                 var scoreText = score.HasValue ? (m.HasPenalties ? $"{score}({pen})" : score.ToString()!) : "—";
 
                 using var nmPaint = MakeTextPaint(isWin ? "#006400" : "#333333", isWin);
@@ -256,7 +256,7 @@ public class PdfExportService
         {
             float groupsTitleY = bracketAreaTop + bracketAreaH + sectionGap;
             using var groupsTitlePaint = new SKPaint { Color = SKColor.Parse("#888888"), TextSize = 26, IsAntialias = true, Typeface = cjkTypeface, TextAlign = SKTextAlign.Center };
-            canvas.DrawText("小组赛积分榜", PdfW / 2, groupsTitleY + 20, groupsTitlePaint);
+            canvas.DrawText(LocalizationService.T("PdfGroupsTitle"), PdfW / 2, groupsTitleY + 20, groupsTitlePaint);
 
             float gridTop = groupsTitleY + groupsTitleH;
             const int cols = 6, rows = 2;
@@ -290,14 +290,19 @@ public class PdfExportService
         using var headerBg = new SKPaint { Color = SKColor.Parse("#1a365d"), Style = SKPaintStyle.Fill };
         canvas.DrawRect(new SKRect(x, y, x + w, y + headerH), headerBg);
         using var headerText = new SKPaint { Color = SKColors.White, TextSize = 13, IsAntialias = true, Typeface = typeface, FakeBoldText = true };
-        canvas.DrawText($"{group.Name} 组", x + 8, y + headerH - 6, headerText);
+        canvas.DrawText(LocalizationService.GroupLabel(group.Name), x + 8, y + headerH - 6, headerText);
 
         // Column widths: # | Team(flex) | P W D L GF GA GD | Pts
         const float posW = 18;
         float teamW = Math.Max(60, w - posW - StatColWidths.Sum() - PtsColWidth);
 
         // Column header row
-        string[] labels = { "#", "队伍", "场", "胜", "平", "负", "进", "失", "净", "积" };
+        string[] labels =
+        {
+            LocalizationService.T("ColPos"), LocalizationService.T("ColTeam"),
+            LocalizationService.T("ColPlayed"), LocalizationService.T("ColWin"), LocalizationService.T("ColDraw"), LocalizationService.T("ColLoss"),
+            LocalizationService.T("ColGF"), LocalizationService.T("ColGA"), LocalizationService.T("ColGD"), LocalizationService.T("ColPts")
+        };
         using var colHeaderBg = new SKPaint { Color = SKColor.Parse("#eef1f5"), Style = SKPaintStyle.Fill };
         canvas.DrawRect(new SKRect(x, y + headerH, x + w, y + headerH + colHeaderH), colHeaderBg);
         using var colHeaderText = new SKPaint { Color = SKColor.Parse("#555555"), TextSize = 9, IsAntialias = true, Typeface = typeface, FakeBoldText = true };
@@ -325,7 +330,7 @@ public class PdfExportService
             var rowBg = qualified ? qualifiedBg : (i % 2 == 0 ? whiteBg : altRowBg);
             canvas.DrawRect(new SKRect(x, rowY, x + w, rowY + rowH), rowBg);
 
-            string[] values = { s.Position.ToString(), s.TeamName, s.Played.ToString(), s.Wins.ToString(),
+            string[] values = { s.Position.ToString(), LocalizationService.TeamName(s.TeamName, s.TeamCode), s.Played.ToString(), s.Wins.ToString(),
                 s.Draws.ToString(), s.Losses.ToString(), s.GoalsFor.ToString(), s.GoalsAgainst.ToString(),
                 s.GoalDifference.ToString("+0;-0;0"), s.Points.ToString() };
 
@@ -460,9 +465,9 @@ public class PdfExportService
 
         // Labels
         using var labelPaint = new SKPaint { Color = goldDark, TextSize = 12 * s, IsAntialias = true, Typeface = typeface, FakeBoldText = true, TextAlign = SKTextAlign.Center };
-        canvas.DrawText("FIFA WORLD CUP", cx, T(147), labelPaint);
+        canvas.DrawText(LocalizationService.T("FifaWorldCup"), cx, T(147), labelPaint);
         using var sublabelPaint = new SKPaint { Color = SKColor.Parse("#888888"), TextSize = 10 * s, IsAntialias = true, Typeface = typeface, TextAlign = SKTextAlign.Center };
-        canvas.DrawText("CHAMPION 2026™", cx, T(163), sublabelPaint);
+        canvas.DrawText(LocalizationService.T("Champion"), cx, T(163), sublabelPaint);
     }
 
     private static void DrawLocalPath(SKCanvas canvas, SKPath localPath, Func<float, float> L, Func<float, float> T,

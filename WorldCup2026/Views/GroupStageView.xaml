@@ -9,6 +9,7 @@
 
     <UserControl.Resources>
         <converters:TeamCodeToFlagConverter x:Key="Flag" />
+        <converters:LocalizedTeamNameConverter x:Key="TeamNameConv" />
     </UserControl.Resources>
 
     <Grid>
@@ -19,7 +20,6 @@
 
         <!-- Empty state -->
         <TextBlock x:Name="EmptyState" Grid.Row="0"
-                   Text="Waiting for tournament data..."
                    FontSize="16" Foreground="Gray"
                    HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,20" />
 
@@ -70,7 +70,7 @@
                 Padding="10"
                 Margin="0,4,0,0">
             <DockPanel>
-                <TextBlock DockPanel.Dock="Top" Text="Group Matches"
+                <TextBlock x:Name="GroupMatchesTitle" DockPanel.Dock="Top"
                            FontSize="14" FontWeight="Bold"
                            Foreground="#1a365d" Margin="0,0,0,8" />
                 <ItemsControl x:Name="MatchesList">
@@ -87,8 +87,14 @@
                                     <!-- Home: name + flag (right-aligned, flag at outer edge) -->
                                     <StackPanel Grid.Column="0" Orientation="Horizontal"
                                                 HorizontalAlignment="Right" VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding HomeTeamName}"
-                                                   FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                        <TextBlock FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0">
+                                            <TextBlock.Text>
+                                                <MultiBinding Converter="{StaticResource TeamNameConv}">
+                                                    <Binding Path="HomeTeamName" />
+                                                    <Binding Path="HomeTeamCode" />
+                                                </MultiBinding>
+                                            </TextBlock.Text>
+                                        </TextBlock>
                                         <ContentPresenter Content="{Binding HomeTeamCode, Converter={StaticResource Flag}}"
                                                           VerticalAlignment="Center" />
                                     </StackPanel>
@@ -109,8 +115,14 @@
                                                 VerticalAlignment="Center">
                                         <ContentPresenter Content="{Binding AwayTeamCode, Converter={StaticResource Flag}}"
                                                           VerticalAlignment="Center" Margin="0,0,8,0" />
-                                        <TextBlock Text="{Binding AwayTeamName}"
-                                                   FontSize="12" VerticalAlignment="Center" />
+                                        <TextBlock FontSize="12" VerticalAlignment="Center">
+                                            <TextBlock.Text>
+                                                <MultiBinding Converter="{StaticResource TeamNameConv}">
+                                                    <Binding Path="AwayTeamName" />
+                                                    <Binding Path="AwayTeamCode" />
+                                                </MultiBinding>
+                                            </TextBlock.Text>
+                                        </TextBlock>
                                     </StackPanel>
                                 </Grid>
                             </Border>

@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using WorldCup2026.Models;
+using WorldCup2026.Services;
 using WorldCup2026.ViewModels;
 
 namespace WorldCup2026.Views;
@@ -24,6 +25,7 @@ public partial class BracketView : UserControl
             if (_vm != null) _vm.PropertyChanged += (_, _) => Dispatcher.Invoke(Render);
             Dispatcher.Invoke(Render);
         };
+        LocalizationService.LanguageChanged += () => Dispatcher.Invoke(Render);
     }
 
     private void Render()
@@ -50,7 +52,11 @@ public partial class BracketView : UserControl
         var tpMatch = _vm.GetThirdPlaceMatch();
 
         if (upperRounds.Count == 0 && lowerRounds.Count == 0)
-        { EmptyState.Visibility = Visibility.Visible; return; }
+        {
+            EmptyState.Text = LocalizationService.T("WaitingBracket");
+            EmptyState.Visibility = Visibility.Visible;
+            return;
+        }
         EmptyState.Visibility = Visibility.Collapsed;
 
         var pos = new Dictionary<string, Point>();
@@ -204,7 +210,7 @@ public partial class BracketView : UserControl
             double off = m.UtcOffsetHours ?? 0;
             var bjt = m.DateTime.Value.AddHours(-off + 8);
             p.Children.Add(new Rectangle { Height = 1, Fill = Brushes.LightGray, Margin = new Thickness(0, 2, 0, 0) });
-            p.Children.Add(new TextBlock { Text = $"北京 {bjt:MM/dd HH:mm}", FontSize = 8, Foreground = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66)), TextAlignment = TextAlignment.Center, Margin = new Thickness(0, 1, 0, 0) });
+            p.Children.Add(new TextBlock { Text = $"{LocalizationService.T("BeijingTime")} {bjt:MM/dd HH:mm}", FontSize = 8, Foreground = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66)), TextAlignment = TextAlignment.Center, Margin = new Thickness(0, 1, 0, 0) });
         }
 
         b.Child = p;
@@ -227,7 +233,7 @@ public partial class BracketView : UserControl
         else
             isWin = score.HasValue && oppScore.HasValue && score > oppScore;
 
-        var label = !string.IsNullOrEmpty(name) ? name : (!string.IsNullOrEmpty(code) ? code : "—");
+        var label = LocalizationService.TeamName(name, code);
 
         // Score display: "1 (4)" for penalty wins, or just "1" / "—"
         string scoreText;
@@ -301,9 +307,9 @@ public partial class BracketView : UserControl
         Canvas.SetLeft(c, cx - 50); Canvas.SetTop(c, cy); Canvas.Children.Add(c);
 
         // Labels
-        var t1 = new TextBlock { Text = "FIFA WORLD CUP", FontSize = 12, FontWeight = FontWeights.Bold, Foreground = gd, Width = 180, TextAlignment = TextAlignment.Center };
+        var t1 = new TextBlock { Text = LocalizationService.T("FifaWorldCup"), FontSize = 12, FontWeight = FontWeights.Bold, Foreground = gd, Width = 180, TextAlignment = TextAlignment.Center };
         Canvas.SetLeft(t1, cx - 90); Canvas.SetTop(t1, cy + 134); Canvas.Children.Add(t1);
-        var t2 = new TextBlock { Text = "CHAMPION 2026™", FontSize = 10, Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x88)), Width = 180, TextAlignment = TextAlignment.Center };
+        var t2 = new TextBlock { Text = LocalizationService.T("Champion"), FontSize = 10, Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x88)), Width = 180, TextAlignment = TextAlignment.Center };
         Canvas.SetLeft(t2, cx - 90); Canvas.SetTop(t2, cy + 150); Canvas.Children.Add(t2);
     }
 }

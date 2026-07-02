@@ -17,6 +17,7 @@ public partial class MainWindow : Window
         _pdfExport = pdfExport;
 
         // Wire up toolbar buttons
+        LangBtn.Click += (_, _) => LocalizationService.Toggle();
         RefreshBtn.Click += async (_, _) => await RefreshDataAsync();
         AutoBtn.Click += (_, _) => ToggleAutoRefresh();
         ExportBtn.Click += async (_, _) => await ExportPdfAsync();
@@ -25,7 +26,23 @@ public partial class MainWindow : Window
         _aggregator.DataRefreshed += OnDataRefreshed;
         _aggregator.StatusChanged += OnStatusChanged;
 
+        // Language switch re-localizes this window's own chrome; BracketView/GroupStageView
+        // localize themselves independently via the same event.
+        LocalizationService.LanguageChanged += () => Dispatcher.Invoke(ApplyLocalization);
+        ApplyLocalization();
+
         Loaded += async (_, _) => await InitializeAsync();
+    }
+
+    private void ApplyLocalization()
+    {
+        Title = LocalizationService.T("AppTitle");
+        LangBtn.Content = LocalizationService.T("Language");
+        RefreshBtn.Content = LocalizationService.T("Refresh");
+        ExportBtn.Content = "📥 " + LocalizationService.T("ExportPdf");
+        KnockoutTitleLabel.Text = LocalizationService.T("KnockoutTitle");
+        GroupTitleLabel.Text = LocalizationService.T("GroupTitle");
+        UpdateStatusDisplay();
     }
 
     private async Task InitializeAsync()
@@ -58,12 +75,12 @@ public partial class MainWindow : Window
     {
         try
         {
-            StatusLabel.Text = "Refreshing...";
+            StatusLabel.Text = LocalizationService.T("Refreshing");
             await _aggregator.RefreshAllAsync();
         }
         catch (Exception ex)
         {
-            StatusLabel.Text = $"Error: {ex.Message}";
+            StatusLabel.Text = $"{LocalizationService.T("ErrorPrefix")}: {ex.Message}";
         }
     }
 
@@ -86,9 +103,9 @@ public partial class MainWindow : Window
         {
             try
             {
-                StatusLabel.Text = "Exporting PDF...";
+                StatusLabel.Text = LocalizationService.T("ExportingPdf");
                 var vm = BracketSection.DataContext as BracketViewModel;
-                if (vm == null) { StatusLabel.Text = "No bracket data"; return; }
+                if (vm == null) { StatusLabel.Text = LocalizationService.T("NoBracketData"); return; }
                 var (upper, lower) = vm.GetSplitBracket();
                 var third = vm.GetThirdPlaceMatch();
 
@@ -102,7 +119,7 @@ public partial class MainWindow : Window
                         _aggregator.LastUpdated);
                 });
 
-                StatusLabel.Text = "PDF exported!";
+                StatusLabel.Text = LocalizationService.T("PdfExported");
             }
             catch (Exception ex)
             {
@@ -126,11 +143,11 @@ public partial class MainWindow : Window
     {
         var source = _aggregator.ActiveSource;
         var last = _aggregator.LastUpdated == default
-            ? "Never"
+            ? LocalizationService.T("Never")
             : _aggregator.LastUpdated.ToString("HH:mm:ss");
-        var auto = _aggregator.IsAutoRefreshEnabled ? "ON" : "OFF";
+        var auto = _aggregator.IsAutoRefreshEnabled ? LocalizationService.T("StatusOn") : LocalizationService.T("StatusOff");
 
-        StatusLabel.Text = $"Source: {source} | Last update: {last} | Auto: {auto}";
-        AutoLabel.Text = $"Auto: {auto}";
+        StatusLabel.Text = $"{LocalizationService.T("StatusSource")}: {source} | {LocalizationService.T("StatusLastUpdate")}: {last} | {LocalizationService.T("StatusAuto")}: {auto}";
+        AutoLabel.Text = $"{LocalizationService.T("StatusAuto")}: {auto}";
     }
 }

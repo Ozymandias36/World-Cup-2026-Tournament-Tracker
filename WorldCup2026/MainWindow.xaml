@@ -45,6 +45,9 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="LangBtn" Content="EN"
+                            Style="{StaticResource ToolbarButton}"
+                            Margin="0,0,5,0" />
                     <Button x:Name="RefreshBtn" Content="Refresh"
                             Style="{StaticResource ToolbarButton}"
                             Margin="0,0,5,0" />
@@ -68,7 +71,7 @@
                         Padding="12" Margin="0,0,0,10"
                         BorderBrush="#e0e0e0" BorderThickness="1">
                     <StackPanel>
-                        <TextBlock Text="Knockout Stage Bracket" Style="{StaticResource SectionTitle}" />
+                        <TextBlock x:Name="KnockoutTitleLabel" Style="{StaticResource SectionTitle}" />
                         <views:BracketView x:Name="BracketSection" />
                     </StackPanel>
                 </Border>
@@ -78,7 +81,7 @@
                         Padding="12" Margin="0,0,0,10"
                         BorderBrush="#e0e0e0" BorderThickness="1">
                     <StackPanel>
-                        <TextBlock Text="Group Stage Results" Style="{StaticResource SectionTitle}" />
+                        <TextBlock x:Name="GroupTitleLabel" Style="{StaticResource SectionTitle}" />
                         <views:GroupStageView x:Name="GroupSection" />
                     </StackPanel>
                 </Border>

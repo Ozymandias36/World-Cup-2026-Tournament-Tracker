@@ -8,7 +8,7 @@
     <Grid>
         <Canvas x:Name="Canvas" Background="Transparent"
                 HorizontalAlignment="Center">
-            <TextBlock x:Name="EmptyState" Text="Waiting for bracket data..."
+            <TextBlock x:Name="EmptyState"
                        FontSize="16" Foreground="Gray"
                        Canvas.Left="400" Canvas.Top="200"
                        Visibility="Collapsed" />

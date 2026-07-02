@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
 using WorldCup2026.Models;
+using WorldCup2026.Services;
 using WorldCup2026.ViewModels;
 
 namespace WorldCup2026.Views;
@@ -18,6 +19,7 @@ public partial class GroupStageView : UserControl
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+        LocalizationService.LanguageChanged += () => Dispatcher.Invoke(RenderGroups);
     }
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -44,6 +46,7 @@ public partial class GroupStageView : UserControl
         var groups = _viewModel.OrderedGroups;
         if (groups.Count == 0)
         {
+            EmptyState.Text = LocalizationService.T("WaitingTournament");
             EmptyState.Visibility = Visibility.Visible;
             GroupsTabControl.Visibility = Visibility.Collapsed;
             MatchesPanel.Visibility = Visibility.Collapsed;
@@ -53,12 +56,15 @@ public partial class GroupStageView : UserControl
         EmptyState.Visibility = Visibility.Collapsed;
         GroupsTabControl.Visibility = Visibility.Visible;
         MatchesPanel.Visibility = Visibility.Visible;
+        GroupMatchesTitle.Text = LocalizationService.T("GroupMatches");
 
         GroupsTabControl.Items.Clear();
 
         foreach (var group in groups)
         {
-            var tabItem = new TabItem { Header = $"Group {group.Name}" };
+            // Tag holds the raw group letter (language-independent) so selection
+            // handling never has to parse the localized header text back apart.
+            var tabItem = new TabItem { Header = LocalizationService.GroupLabel(group.Name), Tag = group.Name };
 
             var grid = CreateStandingsGrid(group);
             tabItem.Content = grid;
@@ -69,6 +75,7 @@ public partial class GroupStageView : UserControl
         if (GroupsTabControl.Items.Count > 0)
         {
             GroupsTabControl.SelectedIndex = 0;
+            GroupsTabControl.SelectionChanged -= OnGroupSelectionChanged; // avoid stacking handlers on re-render
             GroupsTabControl.SelectionChanged += OnGroupSelectionChanged;
             ShowGroupMatches(groups[0].Name);
         }
@@ -92,7 +99,12 @@ public partial class GroupStageView : UserControl
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });     // Pts
 
         // Header
-        var headers = new[] { "", "#", "Team", "P", "W", "D", "L", "GF", "GA", "GD", "Pts" };
+        var headers = new[]
+        {
+            "", LocalizationService.T("ColPos"), LocalizationService.T("ColTeam"),
+            LocalizationService.T("ColPlayed"), LocalizationService.T("ColWin"), LocalizationService.T("ColDraw"), LocalizationService.T("ColLoss"),
+            LocalizationService.T("ColGF"), LocalizationService.T("ColGA"), LocalizationService.T("ColGD"), LocalizationService.T("ColPts")
+        };
         for (int c = 0; c < headers.Length; c++)
         {
             var cell = CreateCell(headers[c], FontWeights.Bold, 11, Colors.White,
@@ -122,7 +134,7 @@ public partial class GroupStageView : UserControl
             var values = new[]
             {
                 standing.Position.ToString(),
-                standing.TeamName,
+                LocalizationService.TeamName(standing.TeamName, standing.TeamCode),
                 standing.Played.ToString(),
                 standing.Wins.ToString(),
                 standing.Draws.ToString(),
@@ -186,12 +198,8 @@ public partial class GroupStageView : UserControl
 
     private void OnGroupSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (GroupsTabControl.SelectedItem is TabItem tabItem)
-        {
-            var header = tabItem.Header?.ToString()?.Replace("Group ", "");
-            if (!string.IsNullOrEmpty(header))
-                ShowGroupMatches(header);
-        }
+        if (GroupsTabControl.SelectedItem is TabItem { Tag: string groupName })
+            ShowGroupMatches(groupName);
     }
 
     private void ShowGroupMatches(string groupName)
