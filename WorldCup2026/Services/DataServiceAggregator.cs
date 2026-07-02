@@ -75,6 +75,13 @@ public class DataServiceAggregator
                         {
                             if (isApi) { OverlayApiData(existing, m); hasLive = true; }
                         }
+                        else if (isApi)
+                        {
+                            // API has different ID — try fuzzy match by team codes
+                            var target = FindByTeams(matchDict.Values, m);
+                            if (target != null) { OverlayApiData(target, m); hasLive = true; }
+                            // else: skip — don't add API-only entries
+                        }
                         else
                         {
                             matchDict[m.Id] = m;
@@ -108,6 +115,34 @@ public class DataServiceAggregator
         }
         finally { IsRefreshing = false; }
     }
+
+    private static Match? FindByTeams(IEnumerable<Match> existing, Match api)
+    {
+        foreach (var m in existing)
+        {
+            if (m.Stage != api.Stage) continue;
+            // Group stage: must be same group
+            if (m.Stage == TournamentStage.GroupStage &&
+                !string.IsNullOrEmpty(m.Group) && !string.IsNullOrEmpty(api.Group) &&
+                !string.Equals(m.Group, api.Group, StringComparison.OrdinalIgnoreCase)) continue;
+
+            // Match by FIFA codes
+            var aCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { m.HomeTeamCode ?? "", m.AwayTeamCode ?? "" };
+            var bCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { api.HomeTeamCode ?? "", api.AwayTeamCode ?? "" };
+            aCodes.Remove(""); bCodes.Remove("");
+            if (aCodes.Count > 0 && bCodes.Count > 0 && aCodes.SetEquals(bCodes)) return m;
+
+            // Fallback: match by team names
+            bool namesMatch =
+                (NamesMatch(m.HomeTeamName, api.HomeTeamName) && NamesMatch(m.AwayTeamName, api.AwayTeamName)) ||
+                (NamesMatch(m.HomeTeamName, api.AwayTeamName) && NamesMatch(m.AwayTeamName, api.HomeTeamName));
+            if (namesMatch) return m;
+        }
+        return null;
+    }
+
+    private static bool NamesMatch(string? a, string? b)
+        => !string.IsNullOrEmpty(a) && !string.IsNullOrEmpty(b) && string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
 
     private static void OverlayApiData(Match existing, Match api)
     {
