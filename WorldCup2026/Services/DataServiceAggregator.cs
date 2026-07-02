@@ -49,6 +49,7 @@ public class DataServiceAggregator
 
         var matchDict = new Dictionary<int, Match>();
         var mergedTeams = new List<Team>();
+        var localTeams = new List<Team>(); // always keep local teams for Chinese names
         var mergedGroups = new List<Group>();
         var mergedPlayers = new List<PlayerStat>();
         var mergedTeamStats = new List<TeamStat>();
@@ -89,6 +90,7 @@ public class DataServiceAggregator
                     }
 
                     if (teams.Count > mergedTeams.Count) mergedTeams = teams;
+                    if (!isApi && teams.Count > localTeams.Count) localTeams = teams;
                 }
                 catch (Exception ex)
                 {
@@ -98,16 +100,27 @@ public class DataServiceAggregator
 
             var mergedMatches = matchDict.Values.OrderBy(m => m.Id).ToList();
 
-            // Convert team names to Chinese using the Teams data
-            var nameMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var t in mergedTeams)
-                if (!string.IsNullOrEmpty(t.NameZh) && !string.IsNullOrEmpty(t.NameEn))
-                    nameMap[t.NameEn] = t.NameZh;
+            // Convert team names to Chinese (always use localTeams which have NameZh)
+            var nameMapEn = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var nameMapCode = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var t in localTeams)
+            {
+                if (!string.IsNullOrEmpty(t.NameZh))
+                {
+                    if (!string.IsNullOrEmpty(t.NameEn)) nameMapEn[t.NameEn] = t.NameZh;
+                    if (!string.IsNullOrEmpty(t.FifaCode)) nameMapCode[t.FifaCode] = t.NameZh;
+                }
+            }
             foreach (var m in mergedMatches)
             {
-                if (nameMap.TryGetValue(m.HomeTeamName ?? "", out var zh)) m.HomeTeamName = zh;
-                if (nameMap.TryGetValue(m.AwayTeamName ?? "", out zh)) m.AwayTeamName = zh;
+                if (nameMapEn.TryGetValue(m.HomeTeamName ?? "", out var zh)) m.HomeTeamName = zh;
+                else if (nameMapCode.TryGetValue(m.HomeTeamCode ?? "", out zh)) m.HomeTeamName = zh;
+                if (nameMapEn.TryGetValue(m.AwayTeamName ?? "", out zh)) m.AwayTeamName = zh;
+                else if (nameMapCode.TryGetValue(m.AwayTeamCode ?? "", out zh)) m.AwayTeamName = zh;
             }
+            // Also convert team names in mergedTeams for standings lookup
+            foreach (var t in mergedTeams)
+                if (nameMapEn.TryGetValue(t.Name, out var zh)) t.Name = zh;
 
             mergedGroups = ComputeGroups(mergedMatches, mergedTeams);
 
