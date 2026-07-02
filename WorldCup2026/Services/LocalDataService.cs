@@ -38,8 +38,9 @@ public class LocalDataService : IDataService
             _cachedTeams = wrapper?.Teams?.Select(t => new Team
             {
                 Id = t.Id,
-                Name = t.NameEn ?? string.Empty,
+                Name = t.NameZh ?? t.NameEn ?? string.Empty,
                 NameEn = t.NameEn ?? string.Empty,
+                NameZh = t.NameZh ?? string.Empty,
                 FifaCode = t.FifaCode ?? string.Empty,
                 FlagUrl = t.Flag ?? string.Empty,
                 Group = t.Group ?? string.Empty
@@ -208,6 +209,7 @@ public class LocalTeam
 {
     public int Id { get; set; }
     [JsonPropertyName("name_en")] public string? NameEn { get; set; }
+    [JsonPropertyName("name_zh")] public string? NameZh { get; set; }
     [JsonPropertyName("fifa_code")] public string? FifaCode { get; set; }
     [JsonPropertyName("flag")] public string? Flag { get; set; }
     [JsonPropertyName("group")] public string? Group { get; set; }

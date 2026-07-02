@@ -97,6 +97,18 @@ public class DataServiceAggregator
             }
 
             var mergedMatches = matchDict.Values.OrderBy(m => m.Id).ToList();
+
+            // Convert team names to Chinese using the Teams data
+            var nameMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var t in mergedTeams)
+                if (!string.IsNullOrEmpty(t.NameZh) && !string.IsNullOrEmpty(t.NameEn))
+                    nameMap[t.NameEn] = t.NameZh;
+            foreach (var m in mergedMatches)
+            {
+                if (nameMap.TryGetValue(m.HomeTeamName ?? "", out var zh)) m.HomeTeamName = zh;
+                if (nameMap.TryGetValue(m.AwayTeamName ?? "", out zh)) m.AwayTeamName = zh;
+            }
+
             mergedGroups = ComputeGroups(mergedMatches, mergedTeams);
 
             if (mergedMatches.Count > 0)

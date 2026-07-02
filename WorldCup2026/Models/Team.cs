@@ -8,6 +8,7 @@ public class Team
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public string NameEn { get; set; } = string.Empty;
+    public string NameZh { get; set; } = string.Empty;
     public string FifaCode { get; set; } = string.Empty;
     public string FlagUrl { get; set; } = string.Empty;
     public string Confederation { get; set; } = string.Empty; // UEFA, CONMEBOL, etc.
