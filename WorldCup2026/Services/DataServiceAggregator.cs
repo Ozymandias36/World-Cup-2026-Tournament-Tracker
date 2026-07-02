@@ -170,7 +170,7 @@ public class DataServiceAggregator
         {"CIV","科特迪瓦"},{"ECU","厄瓜多尔"},{"NED","荷兰"},{"JPN","日本"},{"SWE","瑞典"},{"TUN","突尼斯"},
         {"BEL","比利时"},{"EGY","埃及"},{"IRN","伊朗"},{"NZL","新西兰"},{"ESP","西班牙"},{"CPV","佛得角"},
         {"KSA","沙特"},{"URU","乌拉圭"},{"FRA","法国"},{"SEN","塞内加尔"},{"IRQ","伊拉克"},{"NOR","挪威"},
-        {"ARG","阿根廷"},{"ALG","阿尔及利亚"},{"AUT","奥地利"},{"JOR","约旦"},{"POR","葡萄牙"},{"COD","刚果(金)"},
+        {"ARG","阿根廷"},{"ALG","阿尔及利亚"},{"AUT","奥地利"},{"JOR","约旦"},{"POR","葡萄牙"},{"COD","民主刚果"},
         {"UZB","乌兹别克斯坦"},{"COL","哥伦比亚"},{"ENG","英格兰"},{"CRO","克罗地亚"},{"GHA","加纳"},{"PAN","巴拿马"},
         // English name fallbacks (API may return full English names)
         {"Mexico","墨西哥"},{"South Africa","南非"},{"South Korea","韩国"},{"Czech Republic","捷克"},
@@ -183,11 +183,11 @@ public class DataServiceAggregator
         {"Spain","西班牙"},{"Cape Verde","佛得角"},{"Saudi Arabia","沙特"},{"Uruguay","乌拉圭"},
         {"France","法国"},{"Senegal","塞内加尔"},{"Iraq","伊拉克"},{"Norway","挪威"},
         {"Argentina","阿根廷"},{"Algeria","阿尔及利亚"},{"Austria","奥地利"},{"Jordan","约旦"},
-        {"Portugal","葡萄牙"},{"DR Congo","刚果(金)"},{"Uzbekistan","乌兹别克斯坦"},{"Colombia","哥伦比亚"},
+        {"Portugal","葡萄牙"},{"DR Congo","民主刚果"},{"Uzbekistan","乌兹别克斯坦"},{"Colombia","哥伦比亚"},
         {"England","英格兰"},{"Croatia","克罗地亚"},{"Ghana","加纳"},{"Panama","巴拿马"},
         // FIFA API specific names
         {"Korea Republic","韩国"},{"Czechia","捷克"},{"Côte d'Ivoire","科特迪瓦"},
-        {"Congo DR","刚果(金)"},
+        {"Congo DR","民主刚果"},
     };
 
     private static void ConvertToChinese(List<Match> matches)

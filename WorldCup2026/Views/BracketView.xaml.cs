@@ -223,10 +223,11 @@ public partial class BracketView : UserControl
     private static FrameworkElement Row(Match m, bool home)
     {
         var code = home ? m.HomeTeamCode : m.AwayTeamCode;
+        var name = home ? m.HomeTeamName : m.AwayTeamName;
         var score = home ? m.HomeScore : m.AwayScore;
         var oppScore = home ? m.AwayScore : m.HomeScore;
         var isWin = score.HasValue && oppScore.HasValue && score > oppScore;
-        var label = !string.IsNullOrEmpty(code) ? code : "—";
+        var label = !string.IsNullOrEmpty(name) ? name : (!string.IsNullOrEmpty(code) ? code : "—");
 
         var row = new Grid { Margin = new Thickness(0, 1, 0, 1) };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
