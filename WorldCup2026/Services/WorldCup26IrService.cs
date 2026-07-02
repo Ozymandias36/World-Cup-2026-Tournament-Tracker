@@ -14,7 +14,7 @@ public class WorldCup26IrService : IDataService
 {
     private readonly HttpClient _client;
 
-    public string SourceName => "FIFA Live";
+    public string SourceName => "worldcup26.ir";
 
     public WorldCup26IrService(HttpClient client)
     {

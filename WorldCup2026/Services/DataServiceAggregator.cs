@@ -78,10 +78,12 @@ public class DataServiceAggregator
                         }
                         else if (isApi)
                         {
-                            // API has different ID — try fuzzy match by team codes
+                            // Skip API matches with no data (no codes, no scores)
+                            if (string.IsNullOrEmpty(m.HomeTeamCode) && string.IsNullOrEmpty(m.AwayTeamCode)
+                                && !m.HomeScore.HasValue && !m.AwayScore.HasValue) continue;
+                            // Try fuzzy match by team codes to find local counterpart
                             var target = FindByTeams(matchDict.Values, m);
                             if (target != null) { OverlayApiData(target, m); hasLive = true; }
-                            // else: skip — don't add API-only entries
                         }
                         else
                         {
