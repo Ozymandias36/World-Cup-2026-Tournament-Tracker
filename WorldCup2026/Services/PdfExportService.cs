@@ -1,5 +1,6 @@
 using System.IO;
 using SkiaSharp;
+using WorldCup2026.Helpers;
 using WorldCup2026.Models;
 using WorldCup2026.ViewModels;
 
@@ -11,6 +12,8 @@ public class PdfExportService
     private const float ColW = 165, MatchW = 150, MatchH = 54;
     private const float HalfGap = 300, PairGap = 4, QuadGap = 12;
     private const float PdfW = 1682, PdfH = 1190; // A3 landscape at 96 DPI (420mm × 297mm)
+
+    private readonly Dictionary<string, SKBitmap?> _flagCache = new();
 
     public void ExportBracket(string path, List<BracketRound> upper, List<BracketRound> lower,
         Match? final, Match? third, DateTime stamp)
@@ -42,15 +45,25 @@ public class PdfExportService
             fY = (su.Y + sl.Y) / 2;
             pos["Final|0"] = new SKPoint(fX, fY);
         }
+        // Reserve headroom above the topmost row for the trophy, and room below Final for 3rd place
+        float topPad = final != null ? 150f : 0f;
         float r = lowerRounds.Count > 0 ? ls + (lowerRounds.Count - 1) * ColW + MatchW : ur;
-        float w = Math.Max(r, fX + MatchW) + 40;
-        float h = Math.Max(pos.Values.Max(p => p.Y) + MatchH + 60, 500f);
+        float contentRight = Math.Max(r, fX + MatchW);
+        float bottomMost = pos.Values.Max(p => p.Y) + MatchH;
+        if (third != null) bottomMost = Math.Max(bottomMost, fY + MatchH + 50 + MatchH);
+        float w = contentRight + 20;
+        float h = topPad + bottomMost + 40;
 
-        // ── Scale to fit A3 landscape ──
-        float scale = Math.Min(PdfW / w, PdfH / h);
-        float SX(float x) => x * scale;
-        float SY(float y) => y * scale;
+        // ── Scale to fit A3 landscape, centered ──
+        float scale = Math.Min(PdfW / w, PdfH / h) * 0.97f;
+        float offX = (PdfW - w * scale) / 2f;
+        float offY = (PdfH - h * scale) / 2f + topPad * scale;
+        float SX(float x) => offX + x * scale;
+        float SY(float y) => offY + y * scale;
         float SW(float v) => v * scale;
+
+        // ── CJK-capable typeface (ask the OS font manager for one that can render Chinese) ──
+        var cjkTypeface = SKFontManager.Default.MatchCharacter('国') ?? SKTypeface.Default;
 
         // ── Create PDF ──
         using var stream = File.Create(path);
@@ -59,9 +72,8 @@ public class PdfExportService
         canvas.Clear(SKColors.White);
 
         // Colors
-        var linePaint = new SKPaint { Color = SKColor.Parse("#b0b0b0"), StrokeWidth = 1.2f * scale, IsAntialias = true, Style = SKPaintStyle.Stroke };
-        var trophyGold = new SKPaint { Color = SKColor.Parse("#c8a951"), IsAntialias = true };
-        var trophyDark = new SKPaint { Color = SKColor.Parse("#a08535"), IsAntialias = true };
+        using var linePaint = new SKPaint { Color = SKColor.Parse("#b0b0b0"), StrokeWidth = Math.Max(1f, 1.2f * scale), IsAntialias = true, Style = SKPaintStyle.Stroke };
+        using var sepPaint = new SKPaint { Color = SKColor.Parse("#d0d0d0"), StrokeWidth = Math.Max(0.5f, 0.5f * scale), Style = SKPaintStyle.Stroke };
 
         SKPaint StageColor(TournamentStage st) => new SKPaint
         {
@@ -75,19 +87,14 @@ public class PdfExportService
                 TournamentStage.ThirdPlace => SKColor.Parse("#8b4513"),
                 _ => SKColor.Parse("#808080")
             },
-            StrokeWidth = 1.5f * scale, IsAntialias = true, Style = SKPaintStyle.Stroke
-        };
-        SKPaint FillColor(bool finished) => new SKPaint
-        {
-            Color = finished ? SKColor.Parse("#f8f8f8") : SKColors.White,
-            Style = SKPaintStyle.Fill
+            StrokeWidth = Math.Max(1f, 1.5f * scale), IsAntialias = true, Style = SKPaintStyle.Stroke
         };
 
-        var textPaint = new SKPaint { Color = SKColor.Parse("#333333"), TextSize = 11 * scale, IsAntialias = true, SubpixelText = true };
-        var boldPaint = new SKPaint { Color = SKColor.Parse("#333333"), TextSize = 11 * scale, IsAntialias = true, SubpixelText = true, FakeBoldText = true };
-        var greenPaint = new SKPaint { Color = SKColor.Parse("#006400"), TextSize = 11 * scale, IsAntialias = true, FakeBoldText = true };
-        var greyPaint = new SKPaint { Color = SKColor.Parse("#888888"), TextSize = 7 * scale, IsAntialias = true };
-        var sepPaint = new SKPaint { Color = SKColor.Parse("#d0d0d0"), StrokeWidth = 0.5f * scale, Style = SKPaintStyle.Stroke };
+        SKPaint MakeTextPaint(string hex, bool bold = false) => new SKPaint
+        {
+            Color = SKColor.Parse(hex), TextSize = 11 * scale, IsAntialias = true,
+            Typeface = cjkTypeface, FakeBoldText = bold
+        };
 
         // ── Draw connectors ──
         void Conn(float x1, float y1, float x2, float y2)
@@ -116,7 +123,6 @@ public class PdfExportService
         HalfConnectors(upperRounds, "U");
         HalfConnectors(lowerRounds, "L");
 
-        // Final connectors
         if (final != null)
         {
             if (upperRounds.Count > 0 && pos.TryGetValue($"U|{upperRounds.Last().Stage}|0", out var su))
@@ -125,26 +131,36 @@ public class PdfExportService
                 Conn(ls + MatchW, sl.Y + MatchH / 2, fX, fY + MatchH / 2);
         }
 
+        // ── Flag loader (cached, raster is fine per requirements) ──
+        SKBitmap? GetFlag(string? code)
+        {
+            if (string.IsNullOrEmpty(code)) return null;
+            if (_flagCache.TryGetValue(code, out var cached)) return cached;
+            var bytes = FlagHelper.GetFlagPngBytes(code);
+            var bmp = bytes != null ? SKBitmap.Decode(bytes) : null;
+            _flagCache[code] = bmp;
+            return bmp;
+        }
+
         // ── Draw match nodes ──
         void Node(Match m, float x, float y, TournamentStage stage)
         {
             float rx = SX(x), ry = SY(y), rw = SW(MatchW), rh = SW(MatchH);
             float pad = 4 * scale;
-            var accent = StageColor(stage);
+            using var accent = StageColor(stage);
 
-            // Background + border
             var bg = m.IsFinished ? SKColor.Parse("#f8f8f8") : SKColors.White;
-            canvas.DrawRoundRect(rx, ry, rw, rh, 3 * scale, 3 * scale, new SKPaint { Color = bg, Style = SKPaintStyle.Fill });
+            using var bgPaint = new SKPaint { Color = bg, Style = SKPaintStyle.Fill };
+            canvas.DrawRoundRect(rx, ry, rw, rh, 3 * scale, 3 * scale, bgPaint);
             canvas.DrawRoundRect(rx, ry, rw, rh, 3 * scale, 3 * scale, accent);
 
-            // Separator
-            float midY = ry + (rh - pad * 2) / 2 + pad;
+            float midY = ry + rh / 2f;
             canvas.DrawLine(rx + pad, midY, rx + rw - pad, midY, sepPaint);
 
-            // Rows
-            void Row(bool home, float topY)
+            void Row(bool home, float rowTop, float rowH)
             {
                 var name = home ? m.HomeTeamName : m.AwayTeamName;
+                var code = home ? m.HomeTeamCode : m.AwayTeamCode;
                 var score = home ? m.HomeScore : m.AwayScore;
                 var opp = home ? m.AwayScore : m.HomeScore;
                 var pen = home ? m.HomePenalties : m.AwayPenalties;
@@ -155,20 +171,41 @@ public class PdfExportService
                 var label = !string.IsNullOrEmpty(name) ? name : "—";
                 var scoreText = score.HasValue ? (m.HasPenalties ? $"{score}({pen})" : score.ToString()!) : "—";
 
-                var nmPaint = isWin ? greenPaint : textPaint;
-                var scPaint = isWin ? greenPaint : boldPaint;
+                using var nmPaint = MakeTextPaint(isWin ? "#006400" : "#333333", isWin);
+                using var scPaint = MakeTextPaint(isWin ? "#006400" : "#333333", true);
 
-                // Truncate name if too long
-                float maxNameW = rw * 0.65f;
-                float nameW = nmPaint.MeasureText(label);
-                if (nameW > maxNameW) { var ratio = maxNameW / nameW; nmPaint.TextSize *= ratio; }
+                float textX = rx + pad;
+                float centerY = rowTop + rowH / 2f;
 
-                canvas.DrawText(label, rx + pad, topY + rh * 0.30f, nmPaint);
-                nmPaint.TextSize = 11 * scale; // reset
-                canvas.DrawText(scoreText, rx + rw - pad - 40 * scale, topY + rh * 0.30f, scPaint);
+                // Flag
+                var flag = GetFlag(code);
+                if (flag != null)
+                {
+                    float flagW = SW(18), flagH = SW(13);
+                    var dest = new SKRect(textX, centerY - flagH / 2, textX + flagW, centerY + flagH / 2);
+                    canvas.DrawBitmap(flag, dest);
+                    textX += flagW + 3 * scale;
+                }
+
+                float scoreW = 42 * scale;
+                float maxNameW = (rx + rw - pad - scoreW) - textX;
+                var displayLabel = label;
+                float nameW = nmPaint.MeasureText(displayLabel);
+                while (nameW > maxNameW && displayLabel.Length > 1)
+                {
+                    displayLabel = displayLabel[..^1];
+                    nameW = nmPaint.MeasureText(displayLabel + "…");
+                }
+                if (displayLabel != label) displayLabel += "…";
+
+                var fm = nmPaint.FontMetrics;
+                float baselineY = centerY - (fm.Ascent + fm.Descent) / 2f;
+
+                canvas.DrawText(displayLabel, textX, baselineY, nmPaint);
+                canvas.DrawText(scoreText, rx + rw - pad - scoreW, baselineY, scPaint);
             }
-            Row(true, ry + pad);
-            Row(false, midY + 2 * scale);
+            Row(true, ry, rh / 2f);
+            Row(false, midY, rh / 2f);
         }
 
         void DrawNodes(List<BracketRound> rounds, string tag)
@@ -183,29 +220,140 @@ public class PdfExportService
         if (final != null) Node(final, fX, fY, TournamentStage.Final);
         if (third != null) Node(third, fX, fY + MatchH + 50, TournamentStage.ThirdPlace);
 
-        // ── Trophy ──
+        // ── Trophy (vector, matches the in-app design) ──
         if (final != null)
         {
-            float tc = SX(fX + MatchW / 2), ty = SY(fY) - SW(140);
-            // Cup body
-            canvas.DrawOval(tc - SW(20), ty, SW(40), SW(20), trophyGold);
-            canvas.DrawOval(tc - SW(20), ty, SW(40), SW(20), new SKPaint { Color = trophyDark.Color, Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f * scale });
-            // Stem
-            canvas.DrawRect(tc - SW(4), ty + SW(20), SW(8), SW(35), trophyGold);
-            // Base
-            canvas.DrawRoundRect(tc - SW(30), ty + SW(55), SW(60), SW(38), 3 * scale, 3 * scale, trophyGold);
-            canvas.DrawRoundRect(tc - SW(30), ty + SW(55), SW(60), SW(38), 3 * scale, 3 * scale, new SKPaint { Color = trophyDark.Color, Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f * scale });
-            // Label
-            var chPaint = new SKPaint { Color = trophyDark.Color, TextSize = 14 * scale, IsAntialias = true, FakeBoldText = true, TextAlign = SKTextAlign.Center };
-            canvas.DrawText("CHAMPION", tc, ty + SW(100), chPaint);
+            float centerX = SX(fX + MatchW / 2);
+            float trophyScale = SW(1f) * 0.85f; // local units → PDF units
+            float baseY = SY(fY) - 20 * scale; // bottom of trophy sits just above the Final node
+            DrawTrophy(canvas, centerX, baseY, trophyScale, cjkTypeface);
         }
 
         // ── Footer ──
-        var footPaint = new SKPaint { Color = SKColor.Parse("#aaaaaa"), TextSize = 6 * scale, IsAntialias = true, TextAlign = SKTextAlign.Center };
-        canvas.DrawText($"FIFA World Cup 2026™ — Knockout Bracket  |  {stamp:yyyy-MM-dd HH:mm}", PdfW / 2, PdfH - 15, footPaint);
+        using var footPaint = new SKPaint { Color = SKColor.Parse("#aaaaaa"), TextSize = 6 * scale, IsAntialias = true, Typeface = cjkTypeface, TextAlign = SKTextAlign.Center };
+        canvas.DrawText($"FIFA World Cup 2026™ — 淘汰赛对阵图  |  {stamp:yyyy-MM-dd HH:mm}", PdfW / 2, PdfH - 15, footPaint);
 
         doc.EndPage();
         doc.Close();
+
+        foreach (var bmp in _flagCache.Values) bmp?.Dispose();
+        _flagCache.Clear();
+    }
+
+    /// <summary>
+    /// Draw the FIFA World Cup trophy, ported 1:1 from the WPF BracketView design
+    /// (100×170 local coordinate box: globe, wings, cup body, stem, 5-tier base).
+    /// (cx, bottomY) = horizontal center and bottom anchor point in PDF units.
+    /// </summary>
+    private static void DrawTrophy(SKCanvas canvas, float cx, float bottomY, float s, SKTypeface typeface)
+    {
+        var gold = SKColor.Parse("#d4b042");
+        var goldDark = SKColor.Parse("#b08a28");
+        var goldLight = SKColor.Parse("#f0d868");
+        var malachite = SKColor.Parse("#2e6b4e");
+
+        float ox = cx - 50 * s;      // local (0,0) maps here
+        float oy = bottomY - 170 * s; // local box is 170 tall
+        float L(float v) => ox + v * s;
+        float T(float v) => oy + v * s;
+
+        using var fillGold = new SKPaint { Color = gold, IsAntialias = true, Style = SKPaintStyle.Fill };
+        using var fillGoldDarkPaint = new SKPaint { Color = goldDark, IsAntialias = true, Style = SKPaintStyle.Fill };
+        using var strokeGoldDark = new SKPaint { Color = goldDark, IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = Math.Max(0.6f, s) };
+        using var fillGoldLight = new SKPaint { Color = goldLight, IsAntialias = true, Style = SKPaintStyle.Fill };
+        using var fillMalachite = new SKPaint { Color = malachite, IsAntialias = true, Style = SKPaintStyle.Fill };
+        using var fillWhite = new SKPaint { Color = SKColors.White.WithAlpha(128), IsAntialias = true, Style = SKPaintStyle.Fill };
+        using var bandPaint = new SKPaint { Color = gold.WithAlpha(128), IsAntialias = true };
+        using var sparklePaint = new SKPaint { Color = SKColors.White.WithAlpha(128), IsAntialias = true };
+
+        // Globe
+        canvas.DrawOval(new SKRect(L(41), T(0), L(59), T(18)), fillGoldLight);
+        canvas.DrawOval(new SKRect(L(41), T(0), L(59), T(18)), strokeGoldDark);
+        canvas.DrawRect(new SKRect(L(41), T(7), L(59), T(11)), bandPaint);
+        canvas.DrawRect(new SKRect(L(49), T(18), L(51), T(23)), fillGoldDarkPaint);
+
+        // Wings (left/right)
+        using (var leftWing = SKPath.ParseSvgPathData("M 38,60 C 33,55 28,48 26,40 C 24,33 27,28 33,27 C 37,27 40,31 43,36 C 45,40 45,47 43,54 C 41,59 38,60 38,60 Z"))
+        {
+            DrawLocalPath(canvas, leftWing, L, T, fillGold, strokeGoldDark);
+        }
+        using (var rightWing = SKPath.ParseSvgPathData("M 62,60 C 67,55 72,48 74,40 C 76,33 73,28 67,27 C 63,27 60,31 57,36 C 55,40 55,47 57,54 C 59,59 62,60 62,60 Z"))
+        {
+            DrawLocalPath(canvas, rightWing, L, T, fillGold, strokeGoldDark);
+        }
+
+        // Cup body + highlight
+        using (var cupBody = SKPath.ParseSvgPathData("M 33,60 C 33,48 36,38 42,34 C 45,32 49,28 50,25 L 50,25 C 51,28 55,32 58,34 C 64,38 67,48 67,60 C 67,67 65,72 62,75 L 38,75 C 35,72 33,67 33,60 Z"))
+        {
+            DrawLocalPath(canvas, cupBody, L, T, fillGold, strokeGoldDark);
+        }
+        using (var cupHighlight = SKPath.ParseSvgPathData("M 39,62 C 39,54 42,46 47,43 L 50,43 C 45,46 43,52 43,62 C 43,66 44,70 42,72 L 40,72 C 39,69 39,65 39,62 Z"))
+        {
+            DrawLocalPath(canvas, cupHighlight, L, T, fillWhite, null);
+        }
+
+        // Stem
+        using (var stem = SKPath.ParseSvgPathData("M 45,75 L 55,75 L 53,90 L 51,96 L 49,96 L 47,90 Z"))
+        {
+            DrawLocalPath(canvas, stem, L, T, fillGold, strokeGoldDark);
+        }
+        // Stem ring
+        canvas.DrawRoundRect(new SKRect(L(41), T(79), L(59), T(84)), s, s, fillGoldLight);
+        canvas.DrawRoundRect(new SKRect(L(41), T(79), L(59), T(84)), s, s, strokeGoldDark);
+
+        // Base — 5 tiers (alternating gold / malachite)
+        canvas.DrawRoundRect(new SKRect(L(35), T(95), L(65), T(101)), s, s, fillGold);
+        canvas.DrawRoundRect(new SKRect(L(35), T(95), L(65), T(101)), s, s, strokeGoldDark);
+        canvas.DrawRoundRect(new SKRect(L(32), T(101), L(68), T(108)), s, s, fillMalachite);
+        canvas.DrawRoundRect(new SKRect(L(29), T(108), L(71), T(114)), s, s, fillGold);
+        canvas.DrawRoundRect(new SKRect(L(29), T(108), L(71), T(114)), s, s, strokeGoldDark);
+        canvas.DrawRoundRect(new SKRect(L(26), T(114), L(74), T(121)), s, s, fillMalachite);
+        canvas.DrawRoundRect(new SKRect(L(23), T(121), L(77), T(127)), 2 * s, 2 * s, fillGold);
+        canvas.DrawRoundRect(new SKRect(L(23), T(121), L(77), T(127)), 2 * s, 2 * s, strokeGoldDark);
+        // Bottom rim
+        canvas.DrawRoundRect(new SKRect(L(21), T(127), L(79), T(130)), s, s, fillGoldDarkPaint);
+
+        // Globe sparkle
+        canvas.DrawOval(new SKRect(L(45), T(3), L(49), T(6)), sparklePaint);
+
+        // Labels
+        using var labelPaint = new SKPaint { Color = goldDark, TextSize = 12 * s, IsAntialias = true, Typeface = typeface, FakeBoldText = true, TextAlign = SKTextAlign.Center };
+        canvas.DrawText("FIFA WORLD CUP", cx, T(147), labelPaint);
+        using var sublabelPaint = new SKPaint { Color = SKColor.Parse("#888888"), TextSize = 10 * s, IsAntialias = true, Typeface = typeface, TextAlign = SKTextAlign.Center };
+        canvas.DrawText("CHAMPION 2026™", cx, T(163), sublabelPaint);
+    }
+
+    private static void DrawLocalPath(SKCanvas canvas, SKPath localPath, Func<float, float> L, Func<float, float> T,
+        SKPaint fill, SKPaint? stroke)
+    {
+        // Transform the path's local (SVG-space) coordinates into PDF space using L/T maps.
+        using var transformed = new SKPath();
+        using var iter = localPath.CreateRawIterator();
+        var pts = new SKPoint[4];
+        SKPathVerb verb;
+        while ((verb = iter.Next(pts)) != SKPathVerb.Done)
+        {
+            switch (verb)
+            {
+                case SKPathVerb.Move:
+                    transformed.MoveTo(L(pts[0].X), T(pts[0].Y));
+                    break;
+                case SKPathVerb.Line:
+                    transformed.LineTo(L(pts[1].X), T(pts[1].Y));
+                    break;
+                case SKPathVerb.Cubic:
+                    transformed.CubicTo(L(pts[1].X), T(pts[1].Y), L(pts[2].X), T(pts[2].Y), L(pts[3].X), T(pts[3].Y));
+                    break;
+                case SKPathVerb.Quad:
+                    transformed.QuadTo(L(pts[1].X), T(pts[1].Y), L(pts[2].X), T(pts[2].Y));
+                    break;
+                case SKPathVerb.Close:
+                    transformed.Close();
+                    break;
+            }
+        }
+        canvas.DrawPath(transformed, fill);
+        if (stroke != null) canvas.DrawPath(transformed, stroke);
     }
 
     // ── Layout (same as BracketView) ──
