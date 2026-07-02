@@ -98,6 +98,7 @@ public partial class MainWindow : Window
                         upper, lower,
                         upper.FirstOrDefault(r => r.Stage == Models.TournamentStage.Final)?.Matches.FirstOrDefault(),
                         third,
+                        _aggregator.Groups.ToList(),
                         _aggregator.LastUpdated);
                 });
 

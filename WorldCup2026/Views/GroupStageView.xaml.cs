@@ -111,9 +111,13 @@ public partial class GroupStageView : UserControl
             var rowIndex = grid.RowDefinitions.Count;
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
+            // Top 2 always qualify; a 3rd-place team qualifies only if it's among the
+            // best 8 third-placed teams across all groups (marked via IsQualified).
             var isTop2 = standing.Position <= 2;
+            var isBestThird = standing.Position == 3 && standing.IsQualified;
+            var isQualified = isTop2 || isBestThird;
             var bg = rowIndex % 2 == 0 ? Colors.White : Color.FromRgb(0xf5, 0xf5, 0xf5);
-            if (isTop2) bg = Color.FromRgb(0xe8, 0xf5, 0xe8);
+            if (isQualified) bg = Color.FromRgb(0xe8, 0xf5, 0xe8);
 
             var values = new[]
             {
@@ -132,7 +136,7 @@ public partial class GroupStageView : UserControl
             for (int c = 0; c < values.Length; c++)
             {
                 var fw = c == 0 || c == values.Length - 1 ? FontWeights.Bold : FontWeights.Normal;
-                var fgColor = (isTop2 && c == 0) ? Color.FromRgb(0x2d, 0x6a, 0x4f) : Colors.Black;
+                var fgColor = (isQualified && c == 0) ? Color.FromRgb(0x2d, 0x6a, 0x4f) : Colors.Black;
                 var cell = CreateCell(values[c], fw, 12, fgColor,
                     new SolidColorBrush(bg),
                     c == 1 ? HorizontalAlignment.Left : HorizontalAlignment.Center);

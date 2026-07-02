@@ -288,7 +288,7 @@ public class DataServiceAggregator
     private static List<Group> ComputeGroups(List<Match> matches, List<Team> teams)
     {
         var lookup = teams.ToDictionary(t => t.Name, t => t);
-        return matches.Where(m => m.Stage == TournamentStage.GroupStage && !string.IsNullOrEmpty(m.Group))
+        var groups = matches.Where(m => m.Stage == TournamentStage.GroupStage && !string.IsNullOrEmpty(m.Group))
             .GroupBy(m => m.Group).Select(g =>
             {
                 var ms = g.ToList();
@@ -319,6 +319,31 @@ public class DataServiceAggregator
                 for (int i = 0; i < st.Count; i++) { st[i].Position = i + 1; st[i].IsQualified = i < 2; }
                 return new Group { Name = g.Key, Standings = st, Matches = ms };
             }).OrderBy(g => g.Name).ToList();
+
+        MarkBestThirdPlace(groups);
+        return groups;
+    }
+
+    /// <summary>
+    /// Rank the 12 groups' 3rd-place teams and mark the best 8 as qualified
+    /// (2026 format: top 2 per group + 8 best 3rd-placed teams advance to Round of 32).
+    /// </summary>
+    private static void MarkBestThirdPlace(List<Group> groups)
+    {
+        var thirds = groups
+            .Select(g => g.Standings.FirstOrDefault(s => s.Position == 3))
+            .Where(s => s != null)
+            .Cast<GroupStanding>()
+            .OrderByDescending(s => s.Points)
+            .ThenByDescending(s => s.GoalDifference)
+            .ThenByDescending(s => s.GoalsFor)
+            .Take(8);
+
+        foreach (var t in thirds)
+        {
+            t.IsQualified = true;
+            t.QualificationNote = "最佳第三名";
+        }
     }
 
     /// <summary>

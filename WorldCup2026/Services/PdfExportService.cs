@@ -15,8 +15,12 @@ public class PdfExportService
 
     private readonly Dictionary<string, SKBitmap?> _flagCache = new();
 
+    // Group table stat columns: P, W, D, L, GF, GA, GD (Pts has its own width below)
+    private static readonly float[] StatColWidths = { 20, 20, 20, 20, 20, 22, 22 };
+    private const float PtsColWidth = 22;
+
     public void ExportBracket(string path, List<BracketRound> upper, List<BracketRound> lower,
-        Match? final, Match? third, DateTime stamp)
+        Match? final, Match? third, List<Group> groups, DateTime stamp)
     {
         var stages = new[] { TournamentStage.RoundOf32, TournamentStage.RoundOf16,
             TournamentStage.QuarterFinal, TournamentStage.SemiFinal };
@@ -234,10 +238,132 @@ public class PdfExportService
         canvas.DrawText($"FIFA World Cup 2026™ — 淘汰赛对阵图  |  {stamp:yyyy-MM-dd HH:mm}", PdfW / 2, PdfH - 15, footPaint);
 
         doc.EndPage();
+
+        // ── Page 2: group stage standings (12 groups) ──
+        if (groups.Count > 0)
+            DrawGroupsPage(doc, groups, cjkTypeface);
+
         doc.Close();
 
         foreach (var bmp in _flagCache.Values) bmp?.Dispose();
         _flagCache.Clear();
+    }
+
+    /// <summary>
+    /// Draw all 12 group standings tables on a dedicated PDF page (4 columns × 3 rows).
+    /// Top 2 and the best 8 third-placed teams are highlighted, matching the on-screen UI.
+    /// </summary>
+    private static void DrawGroupsPage(SKDocument doc, List<Group> groups, SKTypeface typeface)
+    {
+        var canvas = doc.BeginPage(PdfW, PdfH);
+        canvas.Clear(SKColors.White);
+
+        using var titlePaint = new SKPaint { Color = SKColor.Parse("#1a365d"), TextSize = 22, IsAntialias = true, Typeface = typeface, FakeBoldText = true, TextAlign = SKTextAlign.Center };
+        canvas.DrawText("小组赛积分榜", PdfW / 2, 32, titlePaint);
+
+        const float margin = 20, top = 50;
+        const int cols = 4, rows = 3;
+        float cellW = (PdfW - margin * 2) / cols;
+        float cellH = (PdfH - top - margin) / rows;
+
+        var ordered = groups.OrderBy(g => g.Name).ToList();
+        for (int idx = 0; idx < ordered.Count && idx < cols * rows; idx++)
+        {
+            int col = idx % cols, row = idx / cols;
+            float cx = margin + col * cellW;
+            float cy = top + row * cellH;
+            DrawGroupTable(canvas, ordered[idx], cx + 5, cy + 5, cellW - 10, cellH - 10, typeface);
+        }
+
+        doc.EndPage();
+    }
+
+    private static void DrawGroupTable(SKCanvas canvas, Group group, float x, float y, float w, float h, SKTypeface typeface)
+    {
+        const float headerH = 22, colHeaderH = 16;
+        using var headerBg = new SKPaint { Color = SKColor.Parse("#1a365d"), Style = SKPaintStyle.Fill };
+        canvas.DrawRect(new SKRect(x, y, x + w, y + headerH), headerBg);
+        using var headerText = new SKPaint { Color = SKColors.White, TextSize = 13, IsAntialias = true, Typeface = typeface, FakeBoldText = true };
+        canvas.DrawText($"{group.Name} 组", x + 8, y + headerH - 6, headerText);
+
+        // Column widths: # | Team(flex) | P W D L GF GA GD | Pts
+        const float posW = 18;
+        float teamW = Math.Max(60, w - posW - StatColWidths.Sum() - PtsColWidth);
+
+        // Column header row
+        string[] labels = { "#", "队伍", "场", "胜", "平", "负", "进", "失", "净", "积" };
+        using var colHeaderBg = new SKPaint { Color = SKColor.Parse("#eef1f5"), Style = SKPaintStyle.Fill };
+        canvas.DrawRect(new SKRect(x, y + headerH, x + w, y + headerH + colHeaderH), colHeaderBg);
+        using var colHeaderText = new SKPaint { Color = SKColor.Parse("#555555"), TextSize = 9, IsAntialias = true, Typeface = typeface, FakeBoldText = true };
+        DrawStatRow(canvas, labels, x, y + headerH, colHeaderH, teamW, posW, colHeaderText, colHeaderText, null);
+
+        // Data rows
+        float rowY = y + headerH + colHeaderH;
+        float rowH = Math.Max(14, (h - headerH - colHeaderH) / Math.Max(1, group.Standings.Count));
+
+        using var normalText = new SKPaint { Color = SKColor.Parse("#333333"), TextSize = 9.5f, IsAntialias = true, Typeface = typeface };
+        using var boldText = new SKPaint { Color = SKColor.Parse("#333333"), TextSize = 9.5f, IsAntialias = true, Typeface = typeface, FakeBoldText = true };
+        using var qualifiedPosText = new SKPaint { Color = SKColor.Parse("#2d6a4f"), TextSize = 9.5f, IsAntialias = true, Typeface = typeface, FakeBoldText = true };
+        using var altRowBg = new SKPaint { Color = SKColor.Parse("#f5f5f5"), Style = SKPaintStyle.Fill };
+        using var qualifiedBg = new SKPaint { Color = SKColor.Parse("#e8f5e8"), Style = SKPaintStyle.Fill };
+        using var whiteBg = new SKPaint { Color = SKColors.White, Style = SKPaintStyle.Fill };
+        using var borderPaint = new SKPaint { Color = SKColor.Parse("#e0e0e0"), Style = SKPaintStyle.Stroke, StrokeWidth = 0.5f };
+
+        for (int i = 0; i < group.Standings.Count; i++)
+        {
+            var s = group.Standings[i];
+            bool isTop2 = s.Position <= 2;
+            bool isBestThird = s.Position == 3 && s.IsQualified;
+            bool qualified = isTop2 || isBestThird;
+
+            var rowBg = qualified ? qualifiedBg : (i % 2 == 0 ? whiteBg : altRowBg);
+            canvas.DrawRect(new SKRect(x, rowY, x + w, rowY + rowH), rowBg);
+
+            string[] values = { s.Position.ToString(), s.TeamName, s.Played.ToString(), s.Wins.ToString(),
+                s.Draws.ToString(), s.Losses.ToString(), s.GoalsFor.ToString(), s.GoalsAgainst.ToString(),
+                s.GoalDifference.ToString("+0;-0;0"), s.Points.ToString() };
+
+            var posPaint = qualified ? qualifiedPosText : normalText;
+            DrawStatRow(canvas, values, x, rowY, rowH, teamW, posW, posPaint, normalText, boldText);
+
+            rowY += rowH;
+        }
+
+        canvas.DrawRect(new SKRect(x, y, x + w, rowY), borderPaint);
+    }
+
+    /// <summary>Draw one row of a group table: position, team name, then 8 numeric stat columns.</summary>
+    private static void DrawStatRow(SKCanvas canvas, string[] values, float x, float rowY, float rowH,
+        float teamW, float posW, SKPaint posPaint, SKPaint teamAndStatPaint, SKPaint? ptsPaint)
+    {
+        float centerY = rowY + rowH / 2f;
+        var fm = teamAndStatPaint.FontMetrics;
+        float baselineY = centerY - (fm.Ascent + fm.Descent) / 2f;
+
+        // Position (col 0), centered in posW
+        using (var p = new SKPaint { Color = posPaint.Color, TextSize = posPaint.TextSize, IsAntialias = true, Typeface = posPaint.Typeface, FakeBoldText = posPaint.FakeBoldText, TextAlign = SKTextAlign.Center })
+            canvas.DrawText(values[0], x + posW / 2f, baselineY, p);
+
+        // Team name (col 1), left-aligned
+        using (var p = new SKPaint { Color = teamAndStatPaint.Color, TextSize = teamAndStatPaint.TextSize, IsAntialias = true, Typeface = teamAndStatPaint.Typeface })
+        {
+            var label = values[1];
+            float maxW = teamW - 4;
+            while (p.MeasureText(label) > maxW && label.Length > 1) label = label[..^1];
+            canvas.DrawText(label, x + posW + 3, baselineY, p);
+        }
+
+        // Stat columns (P W D L GF GA GD Pts) — centered in each column
+        float statX = x + posW + teamW;
+        for (int i = 2; i < values.Length; i++)
+        {
+            bool isPtsCol = i == values.Length - 1;
+            float w = isPtsCol ? PtsColWidth : StatColWidths[i - 2];
+            var paint = (isPtsCol && ptsPaint != null) ? ptsPaint : teamAndStatPaint;
+            using var p = new SKPaint { Color = paint.Color, TextSize = paint.TextSize, IsAntialias = true, Typeface = paint.Typeface, FakeBoldText = paint.FakeBoldText, TextAlign = SKTextAlign.Center };
+            canvas.DrawText(values[i], statX + w / 2f, baselineY, p);
+            statX += w;
+        }
     }
 
     /// <summary>
