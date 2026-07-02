@@ -86,22 +86,20 @@ public partial class MainWindow : Window
         {
             try
             {
+                StatusLabel.Text = "Exporting PDF...";
                 await Task.Run(() =>
                 {
-                    var bracketMatches = _aggregator.Matches
-                        .Where(m => m.Stage != Models.TournamentStage.GroupStage)
-                        .ToList();
-
-                    _pdfExport.ExportPoster(
-                        dialog.FileName,
-                        bracketMatches,
-                        _aggregator.Groups.ToList(),
-                        _aggregator.PlayerStats.ToList(),
-                        _aggregator.TeamStats.ToList(),
-                        _aggregator.LastUpdated);
+                    // Capture the window content visually and save as PDF
+                    Dispatcher.Invoke(() =>
+                    {
+                        _pdfExport.ExportVisual(
+                            dialog.FileName,
+                            BracketSection, // only the knockout bracket
+                            _aggregator.LastUpdated);
+                    });
                 });
 
-                StatusLabel.Text = $"PDF exported!";
+                StatusLabel.Text = "PDF exported!";
             }
             catch (Exception ex)
             {
