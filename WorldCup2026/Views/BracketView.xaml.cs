@@ -204,7 +204,6 @@ public partial class BracketView : UserControl
         p.Children.Add(Row(m, true));
         p.Children.Add(new Rectangle { Height = 1, Fill = Brushes.LightGray, Margin = new Thickness(0, 1, 0, 1) });
         p.Children.Add(Row(m, false));
-        if (m.HasPenalties) p.Children.Add(new TextBlock { Text = $"(p {m.HomePenalties}-{m.AwayPenalties})", FontSize = 8, Foreground = Brushes.Gray });
 
         // Beijing time
         if (m.DateTime.HasValue)
@@ -226,8 +225,27 @@ public partial class BracketView : UserControl
         var name = home ? m.HomeTeamName : m.AwayTeamName;
         var score = home ? m.HomeScore : m.AwayScore;
         var oppScore = home ? m.AwayScore : m.HomeScore;
-        var isWin = score.HasValue && oppScore.HasValue && score > oppScore;
+        var pen = home ? m.HomePenalties : m.AwayPenalties;
+        var oppPen = home ? m.AwayPenalties : m.HomePenalties;
+
+        bool isWin;
+        if (m.HasPenalties && score.HasValue && oppScore.HasValue && score == oppScore)
+            isWin = pen.HasValue && oppPen.HasValue && pen > oppPen;
+        else
+            isWin = score.HasValue && oppScore.HasValue && score > oppScore;
+
         var label = !string.IsNullOrEmpty(name) ? name : (!string.IsNullOrEmpty(code) ? code : "—");
+
+        // Score display: "1 (4)" for penalty wins, or just "1" / "—"
+        string scoreText;
+        if (score.HasValue)
+        {
+            scoreText = m.HasPenalties ? $"{score} ({pen})" : score.ToString();
+        }
+        else
+        {
+            scoreText = "—";
+        }
 
         var row = new Grid { Margin = new Thickness(0, 1, 0, 1) };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -240,7 +258,7 @@ public partial class BracketView : UserControl
         var txt = new TextBlock { Text = label, FontSize = 11, FontWeight = isWin ? FontWeights.Bold : FontWeights.Normal, Foreground = isWin ? new SolidColorBrush(Colors.DarkGreen) : Brushes.Black, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 0, 0) };
         Grid.SetColumn(txt, 1); row.Children.Add(txt);
 
-        var sc = new TextBlock { Text = score?.ToString() ?? "—", FontSize = 11, FontWeight = FontWeights.Bold, Width = 22, TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        var sc = new TextBlock { Text = scoreText, FontSize = 10, FontWeight = isWin ? FontWeights.Bold : FontWeights.Normal, Width = 32, TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(sc, 2); row.Children.Add(sc);
         return row;
     }
