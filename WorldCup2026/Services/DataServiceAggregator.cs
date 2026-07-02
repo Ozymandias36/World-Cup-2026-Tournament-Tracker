@@ -146,28 +146,38 @@ public class DataServiceAggregator
         foreach (var m in existing)
         {
             if (m.Stage != api.Stage) continue;
-            // Group stage: must be same group
             if (m.Stage == TournamentStage.GroupStage &&
                 !string.IsNullOrEmpty(m.Group) && !string.IsNullOrEmpty(api.Group) &&
                 !string.Equals(m.Group, api.Group, StringComparison.OrdinalIgnoreCase)) continue;
 
-            // Match by FIFA codes
-            var aCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { m.HomeTeamCode ?? "", m.AwayTeamCode ?? "" };
-            var bCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { api.HomeTeamCode ?? "", api.AwayTeamCode ?? "" };
-            aCodes.Remove(""); bCodes.Remove("");
-            if (aCodes.Count > 0 && bCodes.Count > 0 && aCodes.SetEquals(bCodes)) return m;
+            // Match by FIFA codes (handle placeholders — at least 1 code must match)
+            if (CodeMatch(m.HomeTeamCode, api.HomeTeamCode) && CodeMatch(m.AwayTeamCode, api.AwayTeamCode)) return m;
+            if (CodeMatch(m.HomeTeamCode, api.AwayTeamCode) && CodeMatch(m.AwayTeamCode, api.HomeTeamCode)) return m;
 
-            // Fallback: match by team names
-            bool namesMatch =
-                (NamesMatch(m.HomeTeamName, api.HomeTeamName) && NamesMatch(m.AwayTeamName, api.AwayTeamName)) ||
-                (NamesMatch(m.HomeTeamName, api.AwayTeamName) && NamesMatch(m.AwayTeamName, api.HomeTeamName));
-            if (namesMatch) return m;
+            // Fallback: match by team names (placeholders are wildcards)
+            if (NameMatch(m.HomeTeamName, api.HomeTeamName) && NameMatch(m.AwayTeamName, api.AwayTeamName)) return m;
+            if (NameMatch(m.HomeTeamName, api.AwayTeamName) && NameMatch(m.AwayTeamName, api.HomeTeamName)) return m;
         }
         return null;
     }
 
-    private static bool NamesMatch(string? a, string? b)
-        => !string.IsNullOrEmpty(a) && !string.IsNullOrEmpty(b) && string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
+    /// <summary>Match two team codes. Empty/placeholder matches anything.</summary>
+    private static bool CodeMatch(string? a, string? b)
+    {
+        if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b)) return true; // placeholder = wildcard
+        return string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Match two team names. Placeholder ("Winner X"/"Loser X") matches anything.</summary>
+    private static bool NameMatch(string? a, string? b)
+    {
+        if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b)) return true;
+        if (IsPlaceholder(a) || IsPlaceholder(b)) return true;
+        return string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPlaceholder(string? s) =>
+        !string.IsNullOrEmpty(s) && (s.StartsWith("Winner ", StringComparison.OrdinalIgnoreCase) || s.StartsWith("Loser ", StringComparison.OrdinalIgnoreCase));
 
     private static void OverlayApiData(Match existing, Match api)
     {

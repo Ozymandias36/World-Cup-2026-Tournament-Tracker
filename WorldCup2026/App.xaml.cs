@@ -25,7 +25,17 @@ public partial class App : Application
         services.AddSingleton<LocalDataService>();
         services.AddTransient<IDataService>(sp => sp.GetRequiredService<LocalDataService>());
 
-        // 2. FIFA Official API — only live data source
+        // 2. Live scores API (matching IDs with local data)
+        services.AddHttpClient<WorldCup26IrService>(client =>
+        {
+            client.BaseAddress = new Uri("https://worldcup26.ir");
+            client.DefaultRequestHeaders.Add("User-Agent", "WorldCup2026-App/1.0");
+            client.DefaultRequestHeaders.Add("Accept", "application/json");
+            client.Timeout = TimeSpan.FromSeconds(8);
+        });
+        services.AddTransient<IDataService>(sp => sp.GetRequiredService<WorldCup26IrService>());
+
+        // 3. FIFA Official API
         services.AddHttpClient<FifaApiService>(client =>
         {
             client.BaseAddress = new Uri("https://api.fifa.com");
