@@ -84,18 +84,18 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
 
-                                    <!-- Home: flag + name (right-aligned) -->
+                                    <!-- Home: name + flag (right-aligned, flag at outer edge) -->
                                     <StackPanel Grid.Column="0" Orientation="Horizontal"
                                                 HorizontalAlignment="Right" VerticalAlignment="Center">
-                                        <ContentPresenter Content="{Binding HomeTeamCode, Converter={StaticResource Flag}}"
-                                                          VerticalAlignment="Center" Margin="0,0,6,0" />
                                         <TextBlock Text="{Binding HomeTeamName}"
-                                                   FontSize="12" VerticalAlignment="Center" />
+                                                   FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                        <ContentPresenter Content="{Binding HomeTeamCode, Converter={StaticResource Flag}}"
+                                                          VerticalAlignment="Center" />
                                     </StackPanel>
 
                                     <!-- Score -->
                                     <StackPanel Grid.Column="1" Orientation="Horizontal"
-                                                VerticalAlignment="Center" Margin="12,0">
+                                                VerticalAlignment="Center" Margin="16,0">
                                         <TextBlock Text="{Binding HomeScore}" FontSize="13" FontWeight="Bold"
                                                    Width="22" TextAlignment="Center" />
                                         <TextBlock Text="-" FontSize="13" Foreground="Gray"
@@ -104,13 +104,13 @@
                                                    Width="22" TextAlignment="Center" />
                                     </StackPanel>
 
-                                    <!-- Away: name + flag (left-aligned) -->
+                                    <!-- Away: flag + name (left-aligned, flag at outer edge) -->
                                     <StackPanel Grid.Column="2" Orientation="Horizontal"
                                                 VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding AwayTeamName}"
-                                                   FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0" />
                                         <ContentPresenter Content="{Binding AwayTeamCode, Converter={StaticResource Flag}}"
-                                                          VerticalAlignment="Center" />
+                                                          VerticalAlignment="Center" Margin="0,0,8,0" />
+                                        <TextBlock Text="{Binding AwayTeamName}"
+                                                   FontSize="12" VerticalAlignment="Center" />
                                     </StackPanel>
                                 </Grid>
                             </Border>
