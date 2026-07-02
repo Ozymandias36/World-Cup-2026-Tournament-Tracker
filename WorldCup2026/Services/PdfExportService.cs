@@ -19,6 +19,17 @@ public class PdfExportService
     private static readonly float[] StatColWidths = { 20, 20, 20, 20, 20, 22, 22 };
     private const float PtsColWidth = 22;
 
+    /// <summary>Load (and cache) a flag bitmap by FIFA code. Raster is fine — no vectorization needed.</summary>
+    private SKBitmap? GetFlag(string? code)
+    {
+        if (string.IsNullOrEmpty(code)) return null;
+        if (_flagCache.TryGetValue(code, out var cached)) return cached;
+        var bytes = FlagHelper.GetFlagPngBytes(code);
+        var bmp = bytes != null ? SKBitmap.Decode(bytes) : null;
+        _flagCache[code] = bmp;
+        return bmp;
+    }
+
     public void ExportBracket(string path, List<BracketRound> upper, List<BracketRound> lower,
         Match? final, Match? third, List<Group> groups, DateTime stamp)
     {
@@ -58,10 +69,23 @@ public class PdfExportService
         float w = contentRight + 20;
         float h = topPad + bottomMost + 40;
 
-        // ── Scale to fit A3 landscape, centered ──
-        float scale = Math.Min(PdfW / w, PdfH / h) * 0.97f;
-        float offX = (PdfW - w * scale) / 2f;
-        float offY = (PdfH - h * scale) / 2f + topPad * scale;
+        // ── Single-page layout: bracket on top, group standings below ──
+        const float margin = 15f;
+        const float titleH = 28f;
+        const float sectionGap = 12f;
+        const float groupsTitleH = 24f;
+        const float groupsGridH = 330f;
+        const float footerH = 16f;
+
+        float bracketAreaTop = margin + titleH;
+        float bracketAreaH = groups.Count > 0
+            ? PdfH - bracketAreaTop - sectionGap - groupsTitleH - groupsGridH - footerH - margin
+            : PdfH - bracketAreaTop - footerH - margin;
+
+        // ── Scale bracket to fit its reserved area, centered within it ──
+        float scale = Math.Min((PdfW - margin * 2) / w, bracketAreaH / h) * 0.97f;
+        float offX = margin + ((PdfW - margin * 2) - w * scale) / 2f;
+        float offY = bracketAreaTop + (bracketAreaH - h * scale) / 2f + topPad * scale;
         float SX(float x) => offX + x * scale;
         float SY(float y) => offY + y * scale;
         float SW(float v) => v * scale;
@@ -74,6 +98,9 @@ public class PdfExportService
         using var doc = SKDocument.CreatePdf(stream);
         var canvas = doc.BeginPage(PdfW, PdfH);
         canvas.Clear(SKColors.White);
+
+        using var pageTitlePaint = new SKPaint { Color = SKColor.Parse("#1a365d"), TextSize = 20, IsAntialias = true, Typeface = cjkTypeface, FakeBoldText = true, TextAlign = SKTextAlign.Center };
+        canvas.DrawText("淘汰赛对阵图", PdfW / 2, margin + 20, pageTitlePaint);
 
         // Colors
         using var linePaint = new SKPaint { Color = SKColor.Parse("#b0b0b0"), StrokeWidth = Math.Max(1f, 1.2f * scale), IsAntialias = true, Style = SKPaintStyle.Stroke };
@@ -133,17 +160,6 @@ public class PdfExportService
                 Conn(su.X + MatchW, su.Y + MatchH / 2, fX, fY + MatchH / 2);
             if (lowerRounds.Count > 0 && pos.TryGetValue($"L|{lowerRounds.Last().Stage}|0", out var sl))
                 Conn(ls + MatchW, sl.Y + MatchH / 2, fX, fY + MatchH / 2);
-        }
-
-        // ── Flag loader (cached, raster is fine per requirements) ──
-        SKBitmap? GetFlag(string? code)
-        {
-            if (string.IsNullOrEmpty(code)) return null;
-            if (_flagCache.TryGetValue(code, out var cached)) return cached;
-            var bytes = FlagHelper.GetFlagPngBytes(code);
-            var bmp = bytes != null ? SKBitmap.Decode(bytes) : null;
-            _flagCache[code] = bmp;
-            return bmp;
         }
 
         // ── Draw match nodes ──
@@ -233,52 +249,40 @@ public class PdfExportService
             DrawTrophy(canvas, centerX, baseY, trophyScale, cjkTypeface);
         }
 
+        // ── Group stage standings — 6 groups per row × 2 rows, same page ──
+        if (groups.Count > 0)
+        {
+            float groupsTitleY = bracketAreaTop + bracketAreaH + sectionGap;
+            using var groupsTitlePaint = new SKPaint { Color = SKColor.Parse("#1a365d"), TextSize = 18, IsAntialias = true, Typeface = cjkTypeface, FakeBoldText = true, TextAlign = SKTextAlign.Center };
+            canvas.DrawText("小组赛积分榜", PdfW / 2, groupsTitleY + 14, groupsTitlePaint);
+
+            float gridTop = groupsTitleY + groupsTitleH;
+            const int cols = 6, rows = 2;
+            float cellW = (PdfW - margin * 2) / cols;
+            float cellH = groupsGridH / rows;
+
+            var ordered = groups.OrderBy(g => g.Name).ToList();
+            for (int idx = 0; idx < ordered.Count && idx < cols * rows; idx++)
+            {
+                int col = idx % cols, row = idx / cols;
+                float cx = margin + col * cellW;
+                float cy = gridTop + row * cellH;
+                DrawGroupTable(canvas, ordered[idx], cx + 4, cy + 4, cellW - 8, cellH - 8, cjkTypeface);
+            }
+        }
+
         // ── Footer ──
-        using var footPaint = new SKPaint { Color = SKColor.Parse("#aaaaaa"), TextSize = 6 * scale, IsAntialias = true, Typeface = cjkTypeface, TextAlign = SKTextAlign.Center };
-        canvas.DrawText($"FIFA World Cup 2026™ — 淘汰赛对阵图  |  {stamp:yyyy-MM-dd HH:mm}", PdfW / 2, PdfH - 15, footPaint);
+        using var footPaint = new SKPaint { Color = SKColor.Parse("#aaaaaa"), TextSize = 7, IsAntialias = true, Typeface = cjkTypeface, TextAlign = SKTextAlign.Center };
+        canvas.DrawText($"FIFA World Cup 2026™  |  {stamp:yyyy-MM-dd HH:mm}", PdfW / 2, PdfH - 6, footPaint);
 
         doc.EndPage();
-
-        // ── Page 2: group stage standings (12 groups) ──
-        if (groups.Count > 0)
-            DrawGroupsPage(doc, groups, cjkTypeface);
-
         doc.Close();
 
         foreach (var bmp in _flagCache.Values) bmp?.Dispose();
         _flagCache.Clear();
     }
 
-    /// <summary>
-    /// Draw all 12 group standings tables on a dedicated PDF page (4 columns × 3 rows).
-    /// Top 2 and the best 8 third-placed teams are highlighted, matching the on-screen UI.
-    /// </summary>
-    private static void DrawGroupsPage(SKDocument doc, List<Group> groups, SKTypeface typeface)
-    {
-        var canvas = doc.BeginPage(PdfW, PdfH);
-        canvas.Clear(SKColors.White);
-
-        using var titlePaint = new SKPaint { Color = SKColor.Parse("#1a365d"), TextSize = 22, IsAntialias = true, Typeface = typeface, FakeBoldText = true, TextAlign = SKTextAlign.Center };
-        canvas.DrawText("小组赛积分榜", PdfW / 2, 32, titlePaint);
-
-        const float margin = 20, top = 50;
-        const int cols = 4, rows = 3;
-        float cellW = (PdfW - margin * 2) / cols;
-        float cellH = (PdfH - top - margin) / rows;
-
-        var ordered = groups.OrderBy(g => g.Name).ToList();
-        for (int idx = 0; idx < ordered.Count && idx < cols * rows; idx++)
-        {
-            int col = idx % cols, row = idx / cols;
-            float cx = margin + col * cellW;
-            float cy = top + row * cellH;
-            DrawGroupTable(canvas, ordered[idx], cx + 5, cy + 5, cellW - 10, cellH - 10, typeface);
-        }
-
-        doc.EndPage();
-    }
-
-    private static void DrawGroupTable(SKCanvas canvas, Group group, float x, float y, float w, float h, SKTypeface typeface)
+    private void DrawGroupTable(SKCanvas canvas, Group group, float x, float y, float w, float h, SKTypeface typeface)
     {
         const float headerH = 22, colHeaderH = 16;
         using var headerBg = new SKPaint { Color = SKColor.Parse("#1a365d"), Style = SKPaintStyle.Fill };
@@ -295,7 +299,7 @@ public class PdfExportService
         using var colHeaderBg = new SKPaint { Color = SKColor.Parse("#eef1f5"), Style = SKPaintStyle.Fill };
         canvas.DrawRect(new SKRect(x, y + headerH, x + w, y + headerH + colHeaderH), colHeaderBg);
         using var colHeaderText = new SKPaint { Color = SKColor.Parse("#555555"), TextSize = 9, IsAntialias = true, Typeface = typeface, FakeBoldText = true };
-        DrawStatRow(canvas, labels, x, y + headerH, colHeaderH, teamW, posW, colHeaderText, colHeaderText, null);
+        DrawStatRow(canvas, labels, null, x, y + headerH, colHeaderH, teamW, posW, colHeaderText, colHeaderText, null);
 
         // Data rows
         float rowY = y + headerH + colHeaderH;
@@ -324,7 +328,7 @@ public class PdfExportService
                 s.GoalDifference.ToString("+0;-0;0"), s.Points.ToString() };
 
             var posPaint = qualified ? qualifiedPosText : normalText;
-            DrawStatRow(canvas, values, x, rowY, rowH, teamW, posW, posPaint, normalText, boldText);
+            DrawStatRow(canvas, values, GetFlag(s.TeamCode), x, rowY, rowH, teamW, posW, posPaint, normalText, boldText);
 
             rowY += rowH;
         }
@@ -332,8 +336,8 @@ public class PdfExportService
         canvas.DrawRect(new SKRect(x, y, x + w, rowY), borderPaint);
     }
 
-    /// <summary>Draw one row of a group table: position, team name, then 8 numeric stat columns.</summary>
-    private static void DrawStatRow(SKCanvas canvas, string[] values, float x, float rowY, float rowH,
+    /// <summary>Draw one row of a group table: position, optional flag, team name, then 8 numeric stat columns.</summary>
+    private static void DrawStatRow(SKCanvas canvas, string[] values, SKBitmap? flag, float x, float rowY, float rowH,
         float teamW, float posW, SKPaint posPaint, SKPaint teamAndStatPaint, SKPaint? ptsPaint)
     {
         float centerY = rowY + rowH / 2f;
@@ -344,13 +348,23 @@ public class PdfExportService
         using (var p = new SKPaint { Color = posPaint.Color, TextSize = posPaint.TextSize, IsAntialias = true, Typeface = posPaint.Typeface, FakeBoldText = posPaint.FakeBoldText, TextAlign = SKTextAlign.Center })
             canvas.DrawText(values[0], x + posW / 2f, baselineY, p);
 
-        // Team name (col 1), left-aligned
+        // Team name (col 1) with optional flag icon, left-aligned
         using (var p = new SKPaint { Color = teamAndStatPaint.Color, TextSize = teamAndStatPaint.TextSize, IsAntialias = true, Typeface = teamAndStatPaint.Typeface })
         {
+            float nameX = x + posW + 3;
+            if (flag != null)
+            {
+                float flagH = Math.Min(rowH * 0.6f, 12f);
+                float flagW = flagH * (18f / 13f);
+                var dest = new SKRect(nameX, centerY - flagH / 2, nameX + flagW, centerY + flagH / 2);
+                canvas.DrawBitmap(flag, dest);
+                nameX += flagW + 3;
+            }
+
             var label = values[1];
-            float maxW = teamW - 4;
+            float maxW = (x + posW + teamW) - nameX - 2;
             while (p.MeasureText(label) > maxW && label.Length > 1) label = label[..^1];
-            canvas.DrawText(label, x + posW + 3, baselineY, p);
+            canvas.DrawText(label, nameX, baselineY, p);
         }
 
         // Stat columns (P W D L GF GA GD Pts) — centered in each column
