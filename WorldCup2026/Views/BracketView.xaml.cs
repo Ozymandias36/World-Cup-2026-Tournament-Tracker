@@ -65,37 +65,30 @@ public partial class BracketView : UserControl
         Layout(lowerRounds, lowerStart, startY, true, pos, "L");
         double lowerLeft = lowerStart;
 
-        // ── Connectors ──
+        // ── 1) All connectors FIRST (behind everything) ──
         DrawConnectors(upperRounds, pos, "U");
         DrawConnectors(lowerRounds, pos, "L");
 
-        // ── Nodes ──
-        DrawNodes(upperRounds, pos, "U");
-        DrawNodes(lowerRounds, pos, "L");
-
-        // ── Final ──
+        // Final + 3rd Place — positions first (needed for connectors), nodes drawn later
         double fX = 0, fY = 0;
         if (finalRound?.Matches.Count > 0)
         {
             var sfU = upperRounds.Count > 0 ? pos[$"U|{upperRounds.Last().Stage}|{upperRounds.Last().Matches.Count - 1}"] : new Point(0, 300);
             var sfL = lowerRounds.Count > 0 ? pos[$"L|{lowerRounds.Last().Stage}|{lowerRounds.Last().Matches.Count - 1}"] : new Point(0, 300);
-
             fX = (upperRight + lowerLeft) / 2 - MatchW / 2;
             fY = (sfU.Y + sfL.Y) / 2;
             pos["Final|0"] = new Point(fX, fY);
-
             if (upperRounds.Count > 0) Conn(sfU.X + MatchW, sfU.Y + MatchH / 2, fX, fY + MatchH / 2);
             if (lowerRounds.Count > 0) Conn(lowerLeft + MatchW, sfL.Y + MatchH / 2, fX, fY + MatchH / 2);
+        }
 
+        // ── 2) All nodes LAST (on top of connectors) ──
+        DrawNodes(upperRounds, pos, "U");
+        DrawNodes(lowerRounds, pos, "L");
+        if (finalRound?.Matches.Count > 0)
             Node(finalRound.Matches[0], fX, fY, TournamentStage.Final);
-        }
-
-        // ── Third Place ──
         if (tpMatch != null && fX > 0)
-        {
-            double tX = fX, tY = fY + MatchH + 50;
-            Node(tpMatch, tX, tY, TournamentStage.ThirdPlace);
-        }
+            Node(tpMatch, fX, fY + MatchH + 50, TournamentStage.ThirdPlace);
 
         // ── Size ──
         double r = lowerRounds.Count > 0 ? lowerStart + (lowerRounds.Count - 1) * ColW + MatchW : upperRight;
