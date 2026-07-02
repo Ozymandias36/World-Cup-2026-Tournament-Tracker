@@ -87,16 +87,18 @@ public partial class MainWindow : Window
             try
             {
                 StatusLabel.Text = "Exporting PDF...";
+                var vm = BracketSection.DataContext as BracketViewModel;
+                if (vm == null) { StatusLabel.Text = "No bracket data"; return; }
+                var (upper, lower) = vm.GetSplitBracket();
+                var third = vm.GetThirdPlaceMatch();
+
                 await Task.Run(() =>
                 {
-                    // Capture the window content visually and save as PDF
-                    Dispatcher.Invoke(() =>
-                    {
-                        _pdfExport.ExportVisual(
-                            dialog.FileName,
-                            BracketSection, // only the knockout bracket
-                            _aggregator.LastUpdated);
-                    });
+                    _pdfExport.ExportBracket(dialog.FileName,
+                        upper, lower,
+                        upper.FirstOrDefault(r => r.Stage == Models.TournamentStage.Final)?.Matches.FirstOrDefault(),
+                        third,
+                        _aggregator.LastUpdated);
                 });
 
                 StatusLabel.Text = "PDF exported!";
