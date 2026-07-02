@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Windows;
 using Microsoft.Extensions.Logging;
 using WorldCup2026.Models;
+using RegexMatch = System.Text.RegularExpressions.Match;
 
 namespace WorldCup2026.Services;
 
@@ -53,6 +54,7 @@ public class DataServiceAggregator
         var mergedPlayers = new List<PlayerStat>();
         var mergedTeamStats = new List<TeamStat>();
         var sources = new List<string>();
+        var apiMatchLists = new List<List<Match>>();
         bool hasLive = false;
 
         try
@@ -68,26 +70,21 @@ public class DataServiceAggregator
                     var teams = await service.GetTeamsAsync(ct);
                     var matches = await service.GetMatchesAsync(ct);
 
-                    foreach (var m in matches)
+                    if (isApi)
                     {
-                        if (m.Id == 0) continue;
-                        if (matchDict.TryGetValue(m.Id, out var existing))
+                        // Cache for a second overlay pass after placeholder resolution
+                        apiMatchLists.Add(matches);
+                        foreach (var m in matches)
                         {
-                            if (isApi) { OverlayApiData(existing, m); hasLive = true; }
-                        }
-                        else if (isApi)
-                        {
-                            // Skip API matches with no data (no codes, no scores)
-                            if (string.IsNullOrEmpty(m.HomeTeamCode) && string.IsNullOrEmpty(m.AwayTeamCode)
-                                && !m.HomeScore.HasValue && !m.AwayScore.HasValue) continue;
-                            // Try fuzzy match by team codes to find local counterpart
-                            var target = FindByTeams(matchDict.Values, m);
+                            if (string.IsNullOrEmpty(m.HomeTeamCode) || string.IsNullOrEmpty(m.AwayTeamCode)) continue;
+                            var target = m.Id != 0 && matchDict.TryGetValue(m.Id, out var byId) ? byId : FindByCode(matchDict.Values, m);
                             if (target != null) { OverlayApiData(target, m); hasLive = true; }
                         }
-                        else
-                        {
-                            matchDict[m.Id] = m;
-                        }
+                    }
+                    else
+                    {
+                        foreach (var m in matches)
+                            if (m.Id != 0) matchDict[m.Id] = m;
                     }
 
                     if (teams.Count > mergedTeams.Count) mergedTeams = teams;
@@ -95,6 +92,22 @@ public class DataServiceAggregator
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"Service {service.SourceName} failed: {ex.Message}");
+                }
+            }
+
+            // Resolve "Winner Match N" / "Loser Match N" placeholders using local bracket
+            // results only (deterministic — no guessing against API data).
+            ResolvePlaceholders(matchDict);
+
+            // Second overlay pass: matches whose placeholders just resolved to real team
+            // codes can now be matched against the API safely (no more wildcards involved).
+            foreach (var matches in apiMatchLists)
+            {
+                foreach (var m in matches)
+                {
+                    if (string.IsNullOrEmpty(m.HomeTeamCode) || string.IsNullOrEmpty(m.AwayTeamCode)) continue;
+                    var target = FindByCode(matchDict.Values, m);
+                    if (target != null) { OverlayApiData(target, m); hasLive = true; }
                 }
             }
 
@@ -123,7 +136,13 @@ public class DataServiceAggregator
         finally { IsRefreshing = false; }
     }
 
-    private static Match? FindByTeams(IEnumerable<Match> existing, Match api)
+    /// <summary>
+    /// Find the local match corresponding to an API match, using FIFA codes only.
+    /// No wildcard/placeholder matching here — that's ambiguous when several R16+
+    /// matches are still "Winner Match X vs Winner Match Y". Advancement is instead
+    /// resolved deterministically by <see cref="ResolvePlaceholders"/> below.
+    /// </summary>
+    private static Match? FindByCode(IEnumerable<Match> existing, Match api)
     {
         foreach (var m in existing)
         {
@@ -132,13 +151,8 @@ public class DataServiceAggregator
                 !string.IsNullOrEmpty(m.Group) && !string.IsNullOrEmpty(api.Group) &&
                 !string.Equals(m.Group, api.Group, StringComparison.OrdinalIgnoreCase)) continue;
 
-            // Match by FIFA codes (handle placeholders — at least 1 code must match)
             if (CodeMatch(m.HomeTeamCode, api.HomeTeamCode) && CodeMatch(m.AwayTeamCode, api.AwayTeamCode)) return m;
             if (CodeMatch(m.HomeTeamCode, api.AwayTeamCode) && CodeMatch(m.AwayTeamCode, api.HomeTeamCode)) return m;
-
-            // Fallback: match by team names (placeholders are wildcards)
-            if (NameMatch(m.HomeTeamName, api.HomeTeamName) && NameMatch(m.AwayTeamName, api.AwayTeamName)) return m;
-            if (NameMatch(m.HomeTeamName, api.AwayTeamName) && NameMatch(m.AwayTeamName, api.HomeTeamName)) return m;
         }
         return null;
     }
@@ -151,7 +165,7 @@ public class DataServiceAggregator
         return name;
     }
 
-    /// <summary>Match two team codes. Empty = no match.</summary>
+    /// <summary>Match two team codes. Empty = no match (never a wildcard).</summary>
     private static bool CodeMatch(string? a, string? b)
     {
         if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b)) return false;
@@ -159,16 +173,51 @@ public class DataServiceAggregator
         return ra != null && rb != null && string.Equals(ra, rb, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>Match two teams by name+code. Placeholder = wildcard.</summary>
-    private static bool NameMatch(string? a, string? b)
+    private static readonly System.Text.RegularExpressions.Regex PlaceholderRegex =
+        new(@"^(Winner|Loser) Match (\d+)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    /// <summary>
+    /// Fill in "Winner Match N" / "Loser Match N" placeholders using the actual result
+    /// of local match N. Runs in ascending match-ID order, which in this tournament's
+    /// numbering always places a round's feeder matches at lower IDs than the round
+    /// itself, so a single pass fully propagates advancement through the bracket.
+    /// </summary>
+    private static void ResolvePlaceholders(Dictionary<int, Match> matchDict)
     {
-        if (string.IsNullOrEmpty(a) || string.IsNullOrEmpty(b)) return false;
-        if (IsPlaceholder(a) || IsPlaceholder(b)) return true;
-        return string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
+        foreach (var m in matchDict.Values.OrderBy(x => x.Id))
+        {
+            ResolveSide(m, matchDict, home: true);
+            ResolveSide(m, matchDict, home: false);
+        }
     }
 
-    private static bool IsPlaceholder(string? s) =>
-        !string.IsNullOrEmpty(s) && (s.StartsWith("Winner ", StringComparison.OrdinalIgnoreCase) || s.StartsWith("Loser ", StringComparison.OrdinalIgnoreCase));
+    private static void ResolveSide(Match m, Dictionary<int, Match> matchDict, bool home)
+    {
+        var name = home ? m.HomeTeamName : m.AwayTeamName;
+        if (string.IsNullOrEmpty(name)) return;
+        RegexMatch match = PlaceholderRegex.Match(name);
+        if (!match.Success) return;
+
+        bool wantWinner = string.Equals(match.Groups[1].Value, "Winner", StringComparison.OrdinalIgnoreCase);
+        int refId = int.Parse(match.Groups[2].Value);
+        if (!matchDict.TryGetValue(refId, out var refMatch)) return;
+        if (!refMatch.HomeScore.HasValue || !refMatch.AwayScore.HasValue) return; // ref match not finished
+
+        bool? homeWon = refMatch.HomeScore != refMatch.AwayScore
+            ? refMatch.HomeScore > refMatch.AwayScore
+            : (refMatch.HomePenalties.HasValue && refMatch.AwayPenalties.HasValue
+                ? refMatch.HomePenalties > refMatch.AwayPenalties
+                : (bool?)null);
+        if (homeWon == null) return; // drawn with no penalty decision yet
+
+        bool takeHome = wantWinner ? homeWon.Value : !homeWon.Value;
+        var resolvedName = takeHome ? refMatch.HomeTeamName : refMatch.AwayTeamName;
+        var resolvedCode = takeHome ? refMatch.HomeTeamCode : refMatch.AwayTeamCode;
+        if (string.IsNullOrEmpty(resolvedName)) return;
+
+        if (home) { m.HomeTeamName = resolvedName; m.HomeTeamCode = resolvedCode; }
+        else { m.AwayTeamName = resolvedName; m.AwayTeamCode = resolvedCode; }
+    }
 
     // ── Hardcoded Chinese team names (code → 中文) ──
     private static readonly Dictionary<string, string> ChineseNames = new(StringComparer.OrdinalIgnoreCase)
