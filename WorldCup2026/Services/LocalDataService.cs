@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Text.Json;
@@ -116,7 +117,8 @@ public class LocalDataService : IDataService
                     Stage = stage,
                     Group = m.TryGetProperty("group", out var g) ? g.GetString() ?? "" : "",
                     Matchday = m.TryGetProperty("matchday", out var md) && md.TryGetInt32(out var mdv) ? mdv : 1,
-                    DateTime = m.TryGetProperty("date", out var dt) && DateTime.TryParse(dt.GetString(), out var d) ? d : null,
+                    DateTime = m.TryGetProperty("date", out var dt) && DateTime.TryParseExact(dt.GetString(), "MM/dd/yyyy HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null,
+                    UtcOffsetHours = m.TryGetProperty("utc_offset", out var uo) && uo.ValueKind == JsonValueKind.Number ? uo.GetDouble() : null,
                     Status = m.TryGetProperty("finished", out var f) && f.GetBoolean() ? "FINISHED" : "SCHEDULED"
                 });
             }

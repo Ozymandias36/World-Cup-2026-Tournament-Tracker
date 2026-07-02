@@ -21,11 +21,21 @@ public partial class App : Application
     {
         services.AddHttpClient();
 
-        // 1. Local data — FIRST, always available instantly
+        // 1. Local data — baseline structure, always available
         services.AddSingleton<LocalDataService>();
         services.AddTransient<IDataService>(sp => sp.GetRequiredService<LocalDataService>());
 
-        // 2. FIFA API — SECOND, optional live updates (8s timeout)
+        // 2. worldcup26.ir — free live scores API
+        services.AddHttpClient<WorldCup26IrService>(client =>
+        {
+            client.BaseAddress = new Uri("https://worldcup26.ir");
+            client.DefaultRequestHeaders.Add("User-Agent", "WorldCup2026-App/1.0");
+            client.DefaultRequestHeaders.Add("Accept", "application/json");
+            client.Timeout = TimeSpan.FromSeconds(8);
+        });
+        services.AddTransient<IDataService>(sp => sp.GetRequiredService<WorldCup26IrService>());
+
+        // 3. FIFA API — official live data
         services.AddHttpClient<FifaApiService>(client =>
         {
             client.BaseAddress = new Uri("https://api.fifa.com");

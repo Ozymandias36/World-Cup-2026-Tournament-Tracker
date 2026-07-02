@@ -39,7 +39,7 @@ public class DataServiceAggregator
     }
 
     /// <summary>
-    /// Refresh all data from available sources using fallback strategy.
+    /// Refresh all data: baseline from local, live scores overlaid from APIs.
     /// </summary>
     public async Task RefreshAllAsync(CancellationToken ct = default)
     {
@@ -47,12 +47,13 @@ public class DataServiceAggregator
         IsRefreshing = true;
         StatusChanged?.Invoke("Refreshing...");
 
+        var matchDict = new Dictionary<int, Match>();
         var mergedTeams = new List<Team>();
-        var mergedMatches = new List<Match>();
         var mergedGroups = new List<Group>();
         var mergedPlayers = new List<PlayerStat>();
         var mergedTeamStats = new List<TeamStat>();
         var sources = new List<string>();
+        bool hasLive = false;
 
         try
         {
@@ -61,26 +62,26 @@ public class DataServiceAggregator
                 try
                 {
                     if (!await service.IsAvailableAsync(ct)) continue;
+                    sources.Add(service.SourceName);
+                    bool isApi = service.SourceName != "Local Data";
 
                     var teams = await service.GetTeamsAsync(ct);
                     var matches = await service.GetMatchesAsync(ct);
-                    var groups = await service.GetGroupsAsync(ct);
-                    var playerStats = await service.GetPlayerStatsAsync(ct);
-                    var teamStats = await service.GetTeamStatsAsync(ct);
 
-                    // Merge: take data if this source has more
-                    if (teams.Count > mergedTeams.Count)
-                        mergedTeams = teams;
-                    if (matches.Count > mergedMatches.Count)
-                        mergedMatches = matches;
-                    if (groups.Count > mergedGroups.Count)
-                        mergedGroups = groups;
-                    if (playerStats.Count > mergedPlayers.Count)
-                        mergedPlayers = playerStats;
-                    if (teamStats.Count > mergedTeamStats.Count)
-                        mergedTeamStats = teamStats;
+                    foreach (var m in matches)
+                    {
+                        if (m.Id == 0) continue;
+                        if (matchDict.TryGetValue(m.Id, out var existing))
+                        {
+                            if (isApi) { OverlayApiData(existing, m); hasLive = true; }
+                        }
+                        else
+                        {
+                            matchDict[m.Id] = m;
+                        }
+                    }
 
-                    sources.Add(service.SourceName);
+                    if (teams.Count > mergedTeams.Count) mergedTeams = teams;
                 }
                 catch (Exception ex)
                 {
@@ -88,7 +89,10 @@ public class DataServiceAggregator
                 }
             }
 
-            if (mergedTeams.Count > 0 || mergedMatches.Count > 0)
+            var mergedMatches = matchDict.Values.OrderBy(m => m.Id).ToList();
+            mergedGroups = ComputeGroups(mergedMatches, mergedTeams);
+
+            if (mergedMatches.Count > 0)
             {
                 UpdateCollection(Teams, mergedTeams);
                 UpdateCollection(Matches, mergedMatches);
@@ -96,21 +100,69 @@ public class DataServiceAggregator
                 UpdateCollection(PlayerStats, mergedPlayers);
                 UpdateCollection(TeamStats, mergedTeamStats);
 
-                ActiveSource = string.Join(" + ", sources);
+                ActiveSource = string.Join(" + ", sources) + (hasLive ? " 🔴LIVE" : "");
                 LastUpdated = DateTime.Now;
-                LastError = string.Empty;
-                StatusChanged?.Invoke($"Updated via {ActiveSource} at {LastUpdated:HH:mm:ss}");
+                StatusChanged?.Invoke($"{ActiveSource} | {LastUpdated:HH:mm:ss}");
                 DataRefreshed?.Invoke();
             }
-            else
+        }
+        finally { IsRefreshing = false; }
+    }
+
+    private static void OverlayApiData(Match existing, Match api)
+    {
+        // Scores
+        if (api.HomeScore.HasValue) { existing.HomeScore = api.HomeScore; existing.AwayScore = api.AwayScore; }
+        if (api.HomePenalties.HasValue) { existing.HomePenalties = api.HomePenalties; existing.AwayPenalties = api.AwayPenalties; }
+        // Status
+        if (!string.IsNullOrEmpty(api.Status)) existing.Status = api.Status;
+        // Team names (API overwrites placeholders like "Winner Match 80")
+        if (!string.IsNullOrEmpty(api.HomeTeamName) && (string.IsNullOrEmpty(existing.HomeTeamName) || existing.HomeTeamName.StartsWith("Winner ") || existing.HomeTeamName.StartsWith("Loser ")))
+            existing.HomeTeamName = api.HomeTeamName;
+        if (!string.IsNullOrEmpty(api.AwayTeamName) && (string.IsNullOrEmpty(existing.AwayTeamName) || existing.AwayTeamName.StartsWith("Winner ") || existing.AwayTeamName.StartsWith("Loser ")))
+            existing.AwayTeamName = api.AwayTeamName;
+        // Codes
+        if (!string.IsNullOrEmpty(api.HomeTeamCode) && string.IsNullOrEmpty(existing.HomeTeamCode)) existing.HomeTeamCode = api.HomeTeamCode;
+        if (!string.IsNullOrEmpty(api.AwayTeamCode) && string.IsNullOrEmpty(existing.AwayTeamCode)) existing.AwayTeamCode = api.AwayTeamCode;
+        // Events
+        if (api.Events.Count > 0) existing.Events = api.Events;
+        // Preserve local utc_offset
+    }
+
+    private static List<Group> ComputeGroups(List<Match> matches, List<Team> teams)
+    {
+        var lookup = teams.ToDictionary(t => t.Name, t => t);
+        return matches.Where(m => m.Stage == TournamentStage.GroupStage && !string.IsNullOrEmpty(m.Group))
+            .GroupBy(m => m.Group).Select(g =>
             {
-                StatusChanged?.Invoke("No data available from any source.");
-            }
-        }
-        finally
-        {
-            IsRefreshing = false;
-        }
+                var ms = g.ToList();
+                var dict = new Dictionary<string, GroupStanding>(StringComparer.OrdinalIgnoreCase);
+                foreach (var m in ms)
+                {
+                    foreach (var (name, code) in new[] { (m.HomeTeamName, m.HomeTeamCode), (m.AwayTeamName, m.AwayTeamCode) })
+                    {
+                        if (string.IsNullOrEmpty(name) || dict.ContainsKey(name)) continue;
+                        var t = lookup.GetValueOrDefault(name);
+                        dict[name] = new GroupStanding { TeamName = name, TeamCode = code ?? t?.FifaCode ?? "", FlagUrl = t?.FlagUrl ?? "", TeamId = t?.Id ?? 0 };
+                    }
+                }
+                foreach (var m in ms)
+                {
+                    if (m.HomeTeamName == null || m.AwayTeamName == null) continue;
+                    if (!m.HomeScore.HasValue || !m.AwayScore.HasValue) continue;
+                    if (!dict.ContainsKey(m.HomeTeamName)) dict[m.HomeTeamName] = new GroupStanding { TeamName = m.HomeTeamName, TeamCode = m.HomeTeamCode ?? "" };
+                    if (!dict.ContainsKey(m.AwayTeamName)) dict[m.AwayTeamName] = new GroupStanding { TeamName = m.AwayTeamName, TeamCode = m.AwayTeamCode ?? "" };
+                    var h = dict[m.HomeTeamName]; var a = dict[m.AwayTeamName];
+                    h.Played++; a.Played++; h.GoalsFor += m.HomeScore.Value; h.GoalsAgainst += m.AwayScore.Value;
+                    a.GoalsFor += m.AwayScore.Value; a.GoalsAgainst += m.HomeScore.Value;
+                    if (m.HomeScore > m.AwayScore) { h.Wins++; h.Points += 3; a.Losses++; }
+                    else if (m.HomeScore < m.AwayScore) { a.Wins++; a.Points += 3; h.Losses++; }
+                    else { h.Draws++; a.Draws++; h.Points++; a.Points++; }
+                }
+                var st = dict.Values.OrderByDescending(s => s.Points).ThenByDescending(s => s.GoalDifference).ThenByDescending(s => s.GoalsFor).ToList();
+                for (int i = 0; i < st.Count; i++) { st[i].Position = i + 1; st[i].IsQualified = i < 2; }
+                return new Group { Name = g.Key, Standings = st, Matches = ms };
+            }).OrderBy(g => g.Name).ToList();
     }
 
     /// <summary>
