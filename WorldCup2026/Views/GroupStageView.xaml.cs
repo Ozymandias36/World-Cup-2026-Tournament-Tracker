@@ -115,15 +115,10 @@ public partial class GroupStageView : UserControl
             var bg = rowIndex % 2 == 0 ? Colors.White : Color.FromRgb(0xf5, 0xf5, 0xf5);
             if (isTop2) bg = Color.FromRgb(0xe8, 0xf5, 0xe8);
 
-            // Team name: show code + name, skip empty code
-            var teamLabel = string.IsNullOrEmpty(standing.TeamCode)
-                ? standing.TeamName
-                : $"{standing.TeamCode}  {standing.TeamName}";
-
             var values = new[]
             {
                 standing.Position.ToString(),
-                teamLabel,
+                standing.TeamName,
                 standing.Played.ToString(),
                 standing.Wins.ToString(),
                 standing.Draws.ToString(),
@@ -150,14 +145,15 @@ public partial class GroupStageView : UserControl
             }
 
             // Flag image in column 0
-            var flagImg = Helpers.FlagHelper.CreateFlagImage(standing.TeamCode, 22, 15);
-            if (flagImg != null) flagImg.Margin = new Thickness(2, 0, 4, 0);
+            var flagImg = Helpers.FlagHelper.CreateFlagImage(standing.TeamCode, 24, 16);
+            if (flagImg != null) { flagImg.VerticalAlignment = VerticalAlignment.Center; flagImg.Margin = new Thickness(0); }
             var flagCell = new Border
             {
                 Background = new SolidColorBrush(bg),
-                Padding = new Thickness(4, 2, 2, 2),
-                Child = (System.Windows.FrameworkElement?)flagImg ?? new TextBlock { Text = standing.TeamCode, FontSize = 10, Foreground = Brushes.Gray }
+                Padding = new Thickness(6, 3, 4, 3),
+                Child = (System.Windows.FrameworkElement?)flagImg ?? new TextBlock { Text = "", FontSize = 10 }
             };
+            flagCell.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetRow(flagCell, rowIndex);
             Grid.SetColumn(flagCell, 0);
             grid.Children.Add(flagCell);
