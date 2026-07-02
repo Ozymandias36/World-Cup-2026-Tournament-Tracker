@@ -189,19 +189,42 @@ public class LocalDataService : IDataService
 
     private static async Task<string?> LoadFileAsync(string dir, string filename)
     {
+        // 1. Try file on disk (debug mode)
         var filePath = Path.Combine(AppContext.BaseDirectory, dir, filename);
         if (File.Exists(filePath))
             return await File.ReadAllTextAsync(filePath);
+
+        // 2. Try embedded resource (single-file publish)
+        var asm = typeof(LocalDataService).Assembly;
+        var resName = $"{asm.GetName().Name}.{dir}.{filename}".Replace("/", ".").Replace("\\", ".");
+        using var stream = asm.GetManifestResourceStream(resName);
+        if (stream != null)
+        {
+            using var reader = new StreamReader(stream);
+            return await reader.ReadToEndAsync();
+        }
+
         return null;
     }
 
     private static async Task<string> LoadEmbeddedResourceAsync(string name)
     {
+        // 1. Try file on disk (debug mode)
         var filePath = Path.Combine(AppContext.BaseDirectory, name);
         if (File.Exists(filePath))
             return await File.ReadAllTextAsync(filePath);
 
-        throw new FileNotFoundException($"Data file '{filePath}' not found");
+        // 2. Try embedded resource (single-file publish)
+        var asm = typeof(LocalDataService).Assembly;
+        var resName = $"{asm.GetName().Name}.{name}".Replace("/", ".").Replace("\\", ".");
+        using var stream = asm.GetManifestResourceStream(resName);
+        if (stream != null)
+        {
+            using var reader = new StreamReader(stream);
+            return await reader.ReadToEndAsync();
+        }
+
+        throw new FileNotFoundException($"Data file '{name}' not found on disk or in embedded resources");
     }
 }
 

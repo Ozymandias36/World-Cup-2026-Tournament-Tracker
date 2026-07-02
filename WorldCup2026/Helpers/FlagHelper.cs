@@ -72,26 +72,54 @@ public static class FlagHelper
         {
             var dir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "Flags");
             var path = System.IO.Path.Combine(dir, $"{iso.ToLowerInvariant()}.png");
+            var loaded = false;
+            System.Windows.Media.Imaging.BitmapImage? bmp = null;
 
+            // 1. Try file on disk (debug mode)
             if (System.IO.File.Exists(path))
             {
                 try
                 {
-                    var bmp = new System.Windows.Media.Imaging.BitmapImage();
+                    bmp = new System.Windows.Media.Imaging.BitmapImage();
                     bmp.BeginInit();
                     bmp.UriSource = new Uri(path);
                     bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
                     bmp.EndInit();
-
-                    return new System.Windows.Controls.Image
-                    {
-                        Width = w, Height = h,
-                        Source = bmp,
-                        Stretch = System.Windows.Media.Stretch.UniformToFill,
-                        Margin = new System.Windows.Thickness(0, 0, 4, 0)
-                    };
+                    loaded = true;
                 }
                 catch { }
+            }
+
+            // 2. Try embedded resource (single-file publish)
+            if (!loaded)
+            {
+                var asm = typeof(FlagHelper).Assembly;
+                var resName = $"{asm.GetName().Name}.Resources.Flags.{iso.ToLowerInvariant()}.png";
+                using var stream = asm.GetManifestResourceStream(resName);
+                if (stream != null)
+                {
+                    try
+                    {
+                        bmp = new System.Windows.Media.Imaging.BitmapImage();
+                        bmp.BeginInit();
+                        bmp.StreamSource = stream;
+                        bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                        bmp.EndInit();
+                        loaded = true;
+                    }
+                    catch { }
+                }
+            }
+
+            if (loaded && bmp != null)
+            {
+                return new System.Windows.Controls.Image
+                {
+                    Width = w, Height = h,
+                    Source = bmp,
+                    Stretch = System.Windows.Media.Stretch.UniformToFill,
+                    Margin = new System.Windows.Thickness(0, 0, 4, 0)
+                };
             }
         }
 
