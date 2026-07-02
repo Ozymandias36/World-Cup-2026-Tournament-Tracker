@@ -255,7 +255,7 @@ public class PdfExportService
         if (groups.Count > 0)
         {
             float groupsTitleY = bracketAreaTop + bracketAreaH + sectionGap;
-            using var groupsTitlePaint = new SKPaint { Color = SKColor.Parse("#888888"), TextSize = 26, IsAntialias = true, Typeface = cjkTypeface, FakeBoldText = true, TextAlign = SKTextAlign.Center };
+            using var groupsTitlePaint = new SKPaint { Color = SKColor.Parse("#888888"), TextSize = 26, IsAntialias = true, Typeface = cjkTypeface, TextAlign = SKTextAlign.Center };
             canvas.DrawText("小组赛积分榜", PdfW / 2, groupsTitleY + 20, groupsTitlePaint);
 
             float gridTop = groupsTitleY + groupsTitleH;
