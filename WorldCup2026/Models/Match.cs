@@ -32,4 +32,7 @@ public class Match
     public bool IsLive => Status == "LIVE";
     public bool IsScheduled => Status == "SCHEDULED" || Status == "TIMED";
     public bool HasPenalties => HomePenalties.HasValue && AwayPenalties.HasValue;
+
+    /// <summary>UTC offset in hours of the match local time (e.g. -4 for ET, -7 for PT).</summary>
+    public double? UtcOffsetHours { get; set; }
 }

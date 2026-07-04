@@ -16,6 +16,9 @@ public class FifaApiService : IDataService
     private const string Competition = "17";
     private const string Season = "285023";
 
+    // Cache penalty scores so we don't re-fetch on every 60s refresh.
+    private readonly Dictionary<int, (int Home, int Away)> _penaltyCache = new();
+
     public string SourceName => "FIFA Official";
 
     public FifaApiService(HttpClient client)
@@ -72,10 +75,10 @@ public class FifaApiService : IDataService
         var allMatches = new List<Match>();
         string? token = null;
 
-        try
+        // Paginate — inner try-catch so a failed page-N doesn't skip penalty enrichment.
+        for (int page = 0; page < 10; page++)
         {
-            // Paginate through all matches using continuation token
-            for (int page = 0; page < 10; page++)
+            try
             {
                 var url = $"/api/v3/calendar/matches?idCompetition={Competition}&idSeason={Season}&count=100";
                 if (token != null)
@@ -98,16 +101,73 @@ public class FifaApiService : IDataService
                     var match = ParseMatch(r);
                     if (match != null) allMatches.Add(match);
                 }
-
-                if (token == null) break;
             }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"FIFA pagination page {page}: {ex.Message}");
+                break;
+            }
+
+            if (token == null) break;
         }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"FIFA API error: {ex.Message}");
-        }
+
+        // /calendar/matches has no PenaltyScore — fetch it from the detail endpoint
+        // for finished knockout matches that ended level (drawn → AET/penalties).
+        try { await EnrichWithPenaltyScoresAsync(allMatches, ct); }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"FIFA penalty enrichment: {ex.Message}"); }
 
         return allMatches;
+    }
+
+    private async Task EnrichWithPenaltyScoresAsync(List<Match> matches, CancellationToken ct)
+    {
+        var candidates = matches.Where(m =>
+            m.IsFinished &&
+            m.Stage != TournamentStage.GroupStage &&
+            m.HomeScore.HasValue && m.AwayScore.HasValue &&
+            m.HomeScore == m.AwayScore && // draw → likely went to AET/penalties
+            m.Id != 0 &&
+            !m.HomePenalties.HasValue
+        ).ToList();
+
+        foreach (var match in candidates)
+        {
+            if (_penaltyCache.TryGetValue(match.Id, out var cached))
+            {
+                match.HomePenalties = cached.Home;
+                match.AwayPenalties = cached.Away;
+                continue;
+            }
+
+            try
+            {
+                var json = await _client.GetStringAsync($"/api/v3/live/football/{match.Id}", ct);
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                var homePen = ReadInt(root, "HomeTeamPenaltyScore");
+                var awayPen = ReadInt(root, "AwayTeamPenaltyScore");
+                if (homePen.HasValue && awayPen.HasValue)
+                {
+                    match.HomePenalties = homePen;
+                    match.AwayPenalties = awayPen;
+                    _penaltyCache[match.Id] = (homePen.Value, awayPen.Value);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"FIFA penalty detail {match.Id}: {ex.Message}");
+            }
+        }
+    }
+
+    // Parse an integer from a JSON element, accepting both Number and String kinds.
+    private static int? ReadInt(JsonElement el, string prop)
+    {
+        if (el.ValueKind == JsonValueKind.Undefined) return null;
+        if (!el.TryGetProperty(prop, out var v)) return null;
+        if (v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var n)) return n;
+        if (v.ValueKind == JsonValueKind.String && int.TryParse(v.GetString(), out var s)) return s;
+        return null;
     }
 
     private static Match? ParseMatch(JsonElement r)
@@ -124,22 +184,30 @@ public class FifaApiService : IDataService
             var homeFlag = ResolveFlagUrl(home);
             var awayFlag = ResolveFlagUrl(away);
 
-            var homeScore = home.ValueKind != JsonValueKind.Undefined && home.TryGetProperty("Score", out var hs) && hs.ValueKind == JsonValueKind.Number ? (int?)hs.GetInt32() : null;
-            var awayScore = away.ValueKind != JsonValueKind.Undefined && away.TryGetProperty("Score", out var aws) && aws.ValueKind == JsonValueKind.Number ? (int?)aws.GetInt32() : null;
-
-            var homePen = home.ValueKind != JsonValueKind.Undefined && home.TryGetProperty("PenaltyScore", out var hps) && hps.ValueKind == JsonValueKind.Number ? (int?)hps.GetInt32() : null;
-            var awayPen = away.ValueKind != JsonValueKind.Undefined && away.TryGetProperty("PenaltyScore", out var aps) && aps.ValueKind == JsonValueKind.Number ? (int?)aps.GetInt32() : null;
+            var homeScore = ReadInt(home, "Score");
+            var awayScore = ReadInt(away, "Score");
+            var homePen   = ReadInt(home, "PenaltyScore");
+            var awayPen   = ReadInt(away, "PenaltyScore");
 
             var stageName = GetLocalizedName(r, "StageName");
             var groupName = GetLocalizedName(r, "GroupName");
 
             var dateStr = r.TryGetProperty("LocalDate", out var ld) ? ld.GetString() : null;
             var statusStr = r.TryGetProperty("MatchTime", out var mt) ? mt.GetString() : null;
-            var winner = r.TryGetProperty("Winner", out var w) ? w.GetString() : null;
+            // Winner is returned as a numeric team ID (JsonValueKind.Number), not a string.
+            string? winner = null;
+            if (r.TryGetProperty("Winner", out var w))
+            {
+                if (w.ValueKind == JsonValueKind.String) winner = w.GetString();
+                else if (w.ValueKind == JsonValueKind.Number) winner = w.GetRawText();
+            }
 
             var status = "SCHEDULED";
             if (winner != null && homeScore.HasValue) status = "FINISHED";
-            else if (statusStr != null && statusStr.Contains("'")) status = "LIVE";
+            // MatchTime "FT"/"AET"/"Pen" also signals finished — covers the window where
+            // Winner arrives slightly later than the score in the FIFA feed.
+            else if (statusStr is "FT" or "AET" or "Pen" or "Penalties" or "PENALTY" or "FinalScore") status = "FINISHED";
+            else if (statusStr != null && (statusStr.Contains("'") || statusStr == "HT")) status = "LIVE";
 
             var stadium = r.TryGetProperty("Stadium", out var st) ? st : default;
             var stadiumName = stadium.ValueKind != JsonValueKind.Undefined && stadium.TryGetProperty("Name", out var sn) ? GetLocalizedName(stadium, "Name") : null;
@@ -151,7 +219,11 @@ public class FifaApiService : IDataService
 
             return new Match
             {
-                Id = r.TryGetProperty("IdMatch", out var im) && int.TryParse(im.GetString(), out var mid) ? mid : 0,
+                Id = r.TryGetProperty("IdMatch", out var im)
+                    ? (im.ValueKind == JsonValueKind.Number && im.TryGetInt32(out var numId) ? numId
+                       : im.ValueKind == JsonValueKind.String && int.TryParse(im.GetString(), out var strId) ? strId
+                       : 0)
+                    : 0,
                 HomeTeamName = homeName,
                 AwayTeamName = awayName,
                 HomeTeamCode = homeCode,

@@ -98,13 +98,7 @@ public partial class MainViewModel : ObservableObject
                         .Where(m => m.Stage != TournamentStage.GroupStage)
                         .ToList();
 
-                    _pdfExport.ExportPoster(
-                        dialog.FileName,
-                        bracketMatches,
-                        _aggregator.Groups.ToList(),
-                        _aggregator.PlayerStats.ToList(),
-                        _aggregator.TeamStats.ToList(),
-                        _aggregator.LastUpdated);
+                    // PDF export is now handled by MainWindow via visual capture
                 });
 
                 StatusText = $"PDF exported to: {dialog.FileName}";

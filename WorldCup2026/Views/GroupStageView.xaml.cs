@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
 using WorldCup2026.Models;
+using WorldCup2026.Services;
 using WorldCup2026.ViewModels;
 
 namespace WorldCup2026.Views;
@@ -18,6 +19,7 @@ public partial class GroupStageView : UserControl
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+        LocalizationService.LanguageChanged += () => Dispatcher.Invoke(RenderGroups);
     }
 
     private void OnDataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -44,6 +46,7 @@ public partial class GroupStageView : UserControl
         var groups = _viewModel.OrderedGroups;
         if (groups.Count == 0)
         {
+            EmptyState.Text = LocalizationService.T("WaitingTournament");
             EmptyState.Visibility = Visibility.Visible;
             GroupsTabControl.Visibility = Visibility.Collapsed;
             MatchesPanel.Visibility = Visibility.Collapsed;
@@ -53,12 +56,15 @@ public partial class GroupStageView : UserControl
         EmptyState.Visibility = Visibility.Collapsed;
         GroupsTabControl.Visibility = Visibility.Visible;
         MatchesPanel.Visibility = Visibility.Visible;
+        GroupMatchesTitle.Text = LocalizationService.T("GroupMatches");
 
         GroupsTabControl.Items.Clear();
 
         foreach (var group in groups)
         {
-            var tabItem = new TabItem { Header = $"Group {group.Name}" };
+            // Tag holds the raw group letter (language-independent) so selection
+            // handling never has to parse the localized header text back apart.
+            var tabItem = new TabItem { Header = LocalizationService.GroupLabel(group.Name), Tag = group.Name };
 
             var grid = CreateStandingsGrid(group);
             tabItem.Content = grid;
@@ -69,6 +75,7 @@ public partial class GroupStageView : UserControl
         if (GroupsTabControl.Items.Count > 0)
         {
             GroupsTabControl.SelectedIndex = 0;
+            GroupsTabControl.SelectionChanged -= OnGroupSelectionChanged; // avoid stacking handlers on re-render
             GroupsTabControl.SelectionChanged += OnGroupSelectionChanged;
             ShowGroupMatches(groups[0].Name);
         }
@@ -92,7 +99,12 @@ public partial class GroupStageView : UserControl
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });     // Pts
 
         // Header
-        var headers = new[] { "", "#", "Team", "P", "W", "D", "L", "GF", "GA", "GD", "Pts" };
+        var headers = new[]
+        {
+            "", LocalizationService.T("ColPos"), LocalizationService.T("ColTeam"),
+            LocalizationService.T("ColPlayed"), LocalizationService.T("ColWin"), LocalizationService.T("ColDraw"), LocalizationService.T("ColLoss"),
+            LocalizationService.T("ColGF"), LocalizationService.T("ColGA"), LocalizationService.T("ColGD"), LocalizationService.T("ColPts")
+        };
         for (int c = 0; c < headers.Length; c++)
         {
             var cell = CreateCell(headers[c], FontWeights.Bold, 11, Colors.White,
@@ -111,19 +123,18 @@ public partial class GroupStageView : UserControl
             var rowIndex = grid.RowDefinitions.Count;
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
+            // Top 2 always qualify; a 3rd-place team qualifies only if it's among the
+            // best 8 third-placed teams across all groups (marked via IsQualified).
             var isTop2 = standing.Position <= 2;
+            var isBestThird = standing.Position == 3 && standing.IsQualified;
+            var isQualified = isTop2 || isBestThird;
             var bg = rowIndex % 2 == 0 ? Colors.White : Color.FromRgb(0xf5, 0xf5, 0xf5);
-            if (isTop2) bg = Color.FromRgb(0xe8, 0xf5, 0xe8);
-
-            // Team name: show code + name, skip empty code
-            var teamLabel = string.IsNullOrEmpty(standing.TeamCode)
-                ? standing.TeamName
-                : $"{standing.TeamCode}  {standing.TeamName}";
+            if (isQualified) bg = Color.FromRgb(0xe8, 0xf5, 0xe8);
 
             var values = new[]
             {
                 standing.Position.ToString(),
-                teamLabel,
+                LocalizationService.TeamName(standing.TeamName, standing.TeamCode),
                 standing.Played.ToString(),
                 standing.Wins.ToString(),
                 standing.Draws.ToString(),
@@ -137,7 +148,7 @@ public partial class GroupStageView : UserControl
             for (int c = 0; c < values.Length; c++)
             {
                 var fw = c == 0 || c == values.Length - 1 ? FontWeights.Bold : FontWeights.Normal;
-                var fgColor = (isTop2 && c == 0) ? Color.FromRgb(0x2d, 0x6a, 0x4f) : Colors.Black;
+                var fgColor = (isQualified && c == 0) ? Color.FromRgb(0x2d, 0x6a, 0x4f) : Colors.Black;
                 var cell = CreateCell(values[c], fw, 12, fgColor,
                     new SolidColorBrush(bg),
                     c == 1 ? HorizontalAlignment.Left : HorizontalAlignment.Center);
@@ -150,14 +161,15 @@ public partial class GroupStageView : UserControl
             }
 
             // Flag image in column 0
-            var flagImg = Helpers.FlagHelper.CreateFlagImage(standing.TeamCode, 22, 15);
-            if (flagImg != null) flagImg.Margin = new Thickness(2, 0, 4, 0);
+            var flagImg = Helpers.FlagHelper.CreateFlagImage(standing.TeamCode, 24, 16);
+            if (flagImg != null) { flagImg.VerticalAlignment = VerticalAlignment.Center; flagImg.Margin = new Thickness(0); }
             var flagCell = new Border
             {
                 Background = new SolidColorBrush(bg),
-                Padding = new Thickness(4, 2, 2, 2),
-                Child = (System.Windows.FrameworkElement?)flagImg ?? new TextBlock { Text = standing.TeamCode, FontSize = 10, Foreground = Brushes.Gray }
+                Padding = new Thickness(6, 3, 4, 3),
+                Child = (System.Windows.FrameworkElement?)flagImg ?? new TextBlock { Text = "", FontSize = 10 }
             };
+            flagCell.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetRow(flagCell, rowIndex);
             Grid.SetColumn(flagCell, 0);
             grid.Children.Add(flagCell);
@@ -186,12 +198,8 @@ public partial class GroupStageView : UserControl
 
     private void OnGroupSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (GroupsTabControl.SelectedItem is TabItem tabItem)
-        {
-            var header = tabItem.Header?.ToString()?.Replace("Group ", "");
-            if (!string.IsNullOrEmpty(header))
-                ShowGroupMatches(header);
-        }
+        if (GroupsTabControl.SelectedItem is TabItem { Tag: string groupName })
+            ShowGroupMatches(groupName);
     }
 
     private void ShowGroupMatches(string groupName)

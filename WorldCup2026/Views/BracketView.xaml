@@ -4,11 +4,16 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              mc:Ignorable="d"
-             d:DesignHeight="900" d:DesignWidth="1400">
-    <Canvas x:Name="Canvas" Background="Transparent">
-        <TextBlock x:Name="EmptyState" Text="Waiting for bracket data..."
-                   FontSize="16" Foreground="Gray"
-                   Canvas.Left="400" Canvas.Top="200"
-                   Visibility="Collapsed" />
-    </Canvas>
+             d:DesignHeight="600" d:DesignWidth="1600">
+    <Grid>
+        <Viewbox Stretch="Uniform" StretchDirection="DownOnly"
+                 HorizontalAlignment="Center" VerticalAlignment="Top">
+            <Canvas x:Name="Canvas" Background="Transparent">
+                <TextBlock x:Name="EmptyState"
+                           FontSize="16" Foreground="Gray"
+                           Canvas.Left="400" Canvas.Top="200"
+                           Visibility="Collapsed" />
+            </Canvas>
+        </Viewbox>
+    </Grid>
 </UserControl>

@@ -3,22 +3,18 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using WorldCup2026.Models;
+using WorldCup2026.Services;
 using WorldCup2026.ViewModels;
 
 namespace WorldCup2026.Views;
 
 public partial class BracketView : UserControl
 {
-    // Layout
-    private const double ColW = 175, MatchW = 155, MatchH = 54;
-    private const double PairGap = 4,   // gap between matches that share same parent
-                       QuadGap = 12,   // gap between groups of 4
-                       HalfGap = 24,   // gap between upper and lower halves
-                       MatchGap = 2;   // tiny gap within a pair
-    private BracketViewModel? _vm;
+    private const double ColW = 165, MatchW = 150, MatchH = 54;
+    private const double PairGap = 4, QuadGap = 12;
+    private const double HalfGap = 300; // space between upper SF right edge and lower SF left edge
 
-    // All matches in bracket tree order, with pairing info
-    private record Node(int Id, TournamentStage Stage, int? ParentIndex);
+    private BracketViewModel? _vm;
 
     public BracketView()
     {
@@ -29,6 +25,7 @@ public partial class BracketView : UserControl
             if (_vm != null) _vm.PropertyChanged += (_, _) => Dispatcher.Invoke(Render);
             Dispatcher.Invoke(Render);
         };
+        LocalizationService.LanguageChanged += () => Dispatcher.Invoke(Render);
     }
 
     private void Render()
@@ -37,122 +34,146 @@ public partial class BracketView : UserControl
         var (upper, lower) = _vm.GetSplitBracket();
         Canvas.Children.Clear();
 
-        // Flatten all matches into a single tree ordered list
-        var allRounds = new List<BracketRound>();
         var stages = new[] { TournamentStage.RoundOf32, TournamentStage.RoundOf16,
             TournamentStage.QuarterFinal, TournamentStage.SemiFinal };
+
+        // Collect rounds per half
+        var upperRounds = new List<BracketRound>();
+        var lowerRounds = new List<BracketRound>();
         foreach (var st in stages)
         {
             var up = upper.FirstOrDefault(r => r.Stage == st);
             var lo = lower.FirstOrDefault(r => r.Stage == st);
-            var combined = (up?.Matches ?? new()).Concat(lo?.Matches ?? new()).ToList();
-            if (combined.Count > 0)
-                allRounds.Add(new BracketRound { Stage = st, Label = st.ToString(), Matches = combined });
+            if (up?.Matches.Count > 0) upperRounds.Add(up);
+            if (lo?.Matches.Count > 0) lowerRounds.Add(lo);
         }
 
-        if (allRounds.Count == 0) { EmptyState.Visibility = Visibility.Visible; return; }
+        var finalRound = upper.FirstOrDefault(r => r.Stage == TournamentStage.Final);
+        var tpMatch = _vm.GetThirdPlaceMatch();
+
+        if (upperRounds.Count == 0 && lowerRounds.Count == 0)
+        {
+            EmptyState.Text = LocalizationService.T("WaitingBracket");
+            EmptyState.Visibility = Visibility.Visible;
+            return;
+        }
         EmptyState.Visibility = Visibility.Collapsed;
 
-        // Layout: column 0 = R32, col 1 = R16, col 2 = QF, col 3 = SF
-        var positions = new Dictionary<string, Point>();
+        var pos = new Dictionary<string, Point>();
+        double startY = finalRound?.Matches.Count > 0 ? 200 : 20;
 
-        foreach (var round in allRounds)
+        // ── Upper half: left → right ──
+        Layout(upperRounds, 10, startY, false, pos, "U");
+        double upperRight = 10 + (upperRounds.Count - 1) * ColW + MatchW;
+
+        // ── Lower half: right ← left (mirrored) ──
+        double lowerStart = upperRight + HalfGap;
+        Layout(lowerRounds, lowerStart, startY, true, pos, "L");
+        double lowerLeft = lowerStart;
+
+        // ── 1) All connectors FIRST (behind everything) ──
+        DrawConnectors(upperRounds, pos, "U");
+        DrawConnectors(lowerRounds, pos, "L");
+
+        // Final + 3rd Place — positions first (needed for connectors), nodes drawn later
+        double fX = 0, fY = 0;
+        if (finalRound?.Matches.Count > 0)
         {
-            int n = round.Matches.Count;
-            int col = round.Stage switch
-            {
-                TournamentStage.RoundOf32 => 0,
-                TournamentStage.RoundOf16 => 1,
-                TournamentStage.QuarterFinal => 2,
-                TournamentStage.SemiFinal => 3,
-                _ => 0
-            };
+            var sfU = upperRounds.Count > 0 ? pos[$"U|{upperRounds.Last().Stage}|{upperRounds.Last().Matches.Count - 1}"] : new Point(0, 300);
+            var sfL = lowerRounds.Count > 0 ? pos[$"L|{lowerRounds.Last().Stage}|{lowerRounds.Last().Matches.Count - 1}"] : new Point(0, 300);
+            fX = (upperRight + lowerLeft) / 2 - MatchW / 2;
+            fY = (sfU.Y + sfL.Y) / 2;
+            pos["Final|0"] = new Point(fX, fY);
+            if (upperRounds.Count > 0) Conn(sfU.X + MatchW, sfU.Y + MatchH / 2, fX, fY + MatchH / 2);
+            if (lowerRounds.Count > 0) Conn(lowerLeft + MatchW, sfL.Y + MatchH / 2, fX, fY + MatchH / 2);
+        }
 
+        // ── 2) All nodes LAST (on top of connectors) ──
+        DrawNodes(upperRounds, pos, "U");
+        DrawNodes(lowerRounds, pos, "L");
+        if (finalRound?.Matches.Count > 0)
+            Node(finalRound.Matches[0], fX, fY, TournamentStage.Final);
+        if (tpMatch != null && fX > 0)
+            Node(tpMatch, fX, fY + MatchH + 50, TournamentStage.ThirdPlace);
+
+        // ── Size ──
+        double r = lowerRounds.Count > 0 ? lowerStart + (lowerRounds.Count - 1) * ColW + MatchW : upperRight;
+        double w = Math.Max(r, fX + MatchW) + 20;
+        double h = Math.Max(pos.Values.Max(p => p.Y) + MatchH + 60, 400);
+        Canvas.Width = w; Canvas.Height = h;
+
+        // ── Trophy above Final ──
+        if (fX > 0)
+        {
+            double tc = fX + MatchW / 2;
+            double ty = fY - 190;
+            RenderTrophy(tc, ty);
+        }
+    }
+
+    // ── Layout a half ──
+    private static void Layout(List<BracketRound> rounds, double x0, double y0, bool mirrored,
+        Dictionary<string, Point> pos, string tag)
+    {
+        for (int ri = 0; ri < rounds.Count; ri++)
+        {
+            var rd = rounds[ri];
+            int n = rd.Matches.Count;
+            int co = mirrored ? rounds.Count - 1 - ri : ri;
+            double x = x0 + co * ColW;
             double[] ys;
-            if (col == 0)
+
+            if (ri == 0)
             {
-                // R32: manual vertical positioning with grouping
-                ys = new double[n];
-                double y = 20;
-                // half sizes: upper = 8 matches, lower = 8 matches
-                int upN = Math.Min(8, n);
-                int loN = n - upN;
-                // Upper half: 8 matches in 4 pairs
-                for (int i = 0; i < upN; i++)
+                ys = new double[n]; double y = y0;
+                for (int i = 0; i < n; i++)
                 {
                     ys[i] = y; y += MatchH;
-                    if (i % 2 == 1 && i < upN - 1) y += QuadGap; // gap between pairs
-                    else if (i < upN - 1) y += PairGap;
-                }
-                y += HalfGap;
-                // Lower half
-                for (int i = 0; i < loN; i++)
-                {
-                    ys[upN + i] = y; y += MatchH;
-                    if (i % 2 == 1 && i < loN - 1) y += QuadGap;
-                    else if (i < loN - 1) y += PairGap;
+                    if (i % 2 == 1 && i < n - 1) y += QuadGap; else if (i < n - 1) y += PairGap;
                 }
             }
             else
             {
-                // Centered between children
                 ys = new double[n];
-                var prevRound = allRounds[col - 1];
+                var prev = rounds[ri - 1];
                 for (int i = 0; i < n; i++)
                 {
                     int a = i * 2, b = i * 2 + 1;
-                    int prevN = prevRound.Matches.Count;
                     double ay = 0, by = 0;
-                    if (a < prevN && positions.TryGetValue($"{prevRound.Stage}|{a}", out var pa)) ay = pa.Y;
-                    if (b < prevN && positions.TryGetValue($"{prevRound.Stage}|{b}", out var pb)) by = pb.Y;
-                    ys[i] = (ay > 0 && by > 0) ? (ay + by) / 2 :
-                            (ay > 0) ? ay : (by > 0) ? by : 20 + i * (MatchH + 20);
+                    if (a < prev.Matches.Count && pos.TryGetValue($"{tag}|{prev.Stage}|{a}", out var pa)) ay = pa.Y;
+                    if (b < prev.Matches.Count && pos.TryGetValue($"{tag}|{prev.Stage}|{b}", out var pb)) by = pb.Y;
+                    ys[i] = (ay > 0 && by > 0) ? (ay + by) / 2 : (ay > 0 ? ay : by > 0 ? by : y0 + i * (MatchH + 20));
                 }
             }
-
-            for (int i = 0; i < n; i++)
-                positions[$"{round.Stage}|{i}"] = new Point(col * ColW + 10, ys[i]);
+            for (int i = 0; i < n; i++) pos[$"{tag}|{rd.Stage}|{i}"] = new Point(x, ys[i]);
         }
-
-        // Draw connectors first (behind nodes)
-        for (int c = 1; c < allRounds.Count; c++)
-        {
-            var prev = allRounds[c - 1];
-            var curr = allRounds[c];
-            for (int i = 0; i < curr.Matches.Count; i++)
-            {
-                int a = i * 2, b = i * 2 + 1;
-                if (positions.TryGetValue($"{curr.Stage}|{i}", out var parent))
-                {
-                    if (positions.TryGetValue($"{prev.Stage}|{a}", out var ca))
-                        Canvas.Children.Add(MakeLine(ca.X + MatchW, ca.Y + MatchH / 2, parent.X, parent.Y + MatchH / 2));
-                    if (positions.TryGetValue($"{prev.Stage}|{b}", out var cb))
-                        Canvas.Children.Add(MakeLine(cb.X + MatchW, cb.Y + MatchH / 2, parent.X, parent.Y + MatchH / 2));
-                }
-            }
-        }
-
-        // Draw match nodes
-        foreach (var round in allRounds)
-        {
-            for (int i = 0; i < round.Matches.Count; i++)
-            {
-                if (positions.TryGetValue($"{round.Stage}|{i}", out var pt))
-                    Canvas.Children.Add(MakeNode(round.Matches[i], pt.X, pt.Y, round.Stage));
-            }
-        }
-
-        double totalH = positions.Values.Max(p => p.Y) + MatchH + 60;
-        double totalW = allRounds.Count * ColW + 200;
-        Canvas.Width = totalW; Canvas.Height = totalH;
-
-        // Trophy after final column
-        double cx = (allRounds.Count - 1) * ColW + MatchW + 30;
-        double allCY = positions.Values.Where(p => p.X > (allRounds.Count - 2) * ColW).Select(p => p.Y).DefaultIfEmpty(totalH / 2 - 80).Average();
-        RenderTrophy(cx, allCY);
     }
 
-    private static Path MakeLine(double x1, double y1, double x2, double y2)
+    private void DrawConnectors(List<BracketRound> rounds, Dictionary<string, Point> pos, string tag)
+    {
+        for (int ri = 1; ri < rounds.Count; ri++)
+        {
+            var prev = rounds[ri - 1]; var curr = rounds[ri];
+            for (int i = 0; i < curr.Matches.Count; i++)
+            {
+                if (!pos.TryGetValue($"{tag}|{curr.Stage}|{i}", out var p)) continue;
+                int a = i * 2, b = i * 2 + 1;
+                if (pos.TryGetValue($"{tag}|{prev.Stage}|{a}", out var ca)) Conn(ca.X + MatchW, ca.Y + MatchH / 2, p.X, p.Y + MatchH / 2);
+                if (pos.TryGetValue($"{tag}|{prev.Stage}|{b}", out var cb)) Conn(cb.X + MatchW, cb.Y + MatchH / 2, p.X, p.Y + MatchH / 2);
+            }
+        }
+    }
+
+    private void DrawNodes(List<BracketRound> rounds, Dictionary<string, Point> pos, string tag)
+    {
+        foreach (var rd in rounds)
+            for (int i = 0; i < rd.Matches.Count; i++)
+                if (pos.TryGetValue($"{tag}|{rd.Stage}|{i}", out var pt))
+                    Node(rd.Matches[i], pt.X, pt.Y, rd.Stage);
+    }
+
+    // ── Drawing ──
+    private void Conn(double x1, double y1, double x2, double y2)
     {
         double mx = (x1 + x2) / 2;
         var geo = new PathGeometry();
@@ -161,10 +182,10 @@ public partial class BracketView : UserControl
         fig.Segments.Add(new LineSegment(new Point(mx, y2), true));
         fig.Segments.Add(new LineSegment(new Point(x2, y2), true));
         geo.Figures.Add(fig);
-        return new Path { Stroke = new SolidColorBrush(Color.FromRgb(0xb0, 0xb0, 0xb0)), StrokeThickness = 1.2, Data = geo };
+        Canvas.Children.Add(new Path { Stroke = new SolidColorBrush(Color.FromRgb(0xb0, 0xb0, 0xb0)), StrokeThickness = 1.2, Data = geo });
     }
 
-    private static Border MakeNode(Match m, double x, double y, TournamentStage stage)
+    private void Node(Match m, double x, double y, TournamentStage stage)
     {
         var accent = stage switch
         {
@@ -173,27 +194,91 @@ public partial class BracketView : UserControl
             TournamentStage.QuarterFinal => Color.FromRgb(0xc8, 0xa9, 0x51),
             TournamentStage.SemiFinal => Color.FromRgb(0xd4, 0x6a, 0x0e),
             TournamentStage.Final => Color.FromRgb(0xd0, 0x00, 0x00),
+            TournamentStage.ThirdPlace => Color.FromRgb(0x8b, 0x45, 0x13),
             _ => Colors.Gray
         };
         var bg = m.IsFinished ? Color.FromRgb(0xf8, 0xf8, 0xf8) : Colors.White;
-        var border = new Border { Width = MatchW, Background = new SolidColorBrush(bg), BorderBrush = new SolidColorBrush(accent), BorderThickness = new Thickness(1.5), CornerRadius = new CornerRadius(4), Tag = m };
-        var panel = new StackPanel { Margin = new Thickness(4, 2, 4, 2) };
-        panel.Children.Add(MakeRow(m, true));
-        panel.Children.Add(new Rectangle { Height = 1, Fill = Brushes.LightGray, Margin = new Thickness(0, 1, 0, 1) });
-        panel.Children.Add(MakeRow(m, false));
-        if (m.HasPenalties) panel.Children.Add(new TextBlock { Text = $"(p {m.HomePenalties}-{m.AwayPenalties})", FontSize = 8, Foreground = Brushes.Gray });
-        border.Child = panel;
-        Canvas.SetLeft(border, x); Canvas.SetTop(border, y);
-        return border;
+        var b = new Border { Width = MatchW, Background = new SolidColorBrush(bg), BorderBrush = new SolidColorBrush(accent), BorderThickness = new Thickness(1.5), CornerRadius = new CornerRadius(4), Tag = m };
+        var p = new StackPanel { Margin = new Thickness(4, 2, 4, 2) };
+
+        if (m.IsLive)
+        {
+            var liveText = LocalizationService.T("Live");
+            if (m.TimeElapsed.HasValue) liveText += $" {m.TimeElapsed}'";
+            p.Children.Add(new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(0xcc, 0x00, 0x00)),
+                CornerRadius = new CornerRadius(2, 2, 0, 0),
+                Margin = new Thickness(-4, -2, -4, 2),
+                Child = new TextBlock
+                {
+                    Text = liveText,
+                    FontSize = 7.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = Brushes.White,
+                    TextAlignment = TextAlignment.Center,
+                    Padding = new Thickness(2, 1, 2, 1)
+                }
+            });
+        }
+
+        p.Children.Add(Row(m, true));
+        p.Children.Add(new Rectangle { Height = 1, Fill = Brushes.LightGray, Margin = new Thickness(0, 1, 0, 1) });
+        p.Children.Add(Row(m, false));
+
+        // Match time
+        if (m.DateTime.HasValue)
+        {
+            double off = m.UtcOffsetHours ?? 0;
+            DateTime displayTime;
+            string tzLabel;
+            if (LocalizationService.Current == AppLanguage.Chinese)
+            {
+                displayTime = m.DateTime.Value.AddHours(-off + 8);
+                tzLabel = "UTC+8";
+            }
+            else
+            {
+                displayTime = m.DateTime.Value;
+                int h = (int)off;
+                tzLabel = m.UtcOffsetHours.HasValue ? (h >= 0 ? $"UTC+{h}" : $"UTC{h}") : "UTC";
+            }
+            p.Children.Add(new Rectangle { Height = 1, Fill = Brushes.LightGray, Margin = new Thickness(0, 2, 0, 0) });
+            p.Children.Add(new TextBlock { Text = $"{tzLabel} {displayTime:MM/dd HH:mm}", FontSize = 8, Foreground = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66)), TextAlignment = TextAlignment.Center, Margin = new Thickness(0, 1, 0, 0) });
+        }
+
+        b.Child = p;
+        Canvas.SetLeft(b, x); Canvas.SetTop(b, y);
+        Canvas.Children.Add(b);
     }
 
-    private static FrameworkElement MakeRow(Match m, bool home)
+    private static FrameworkElement Row(Match m, bool home)
     {
         var code = home ? m.HomeTeamCode : m.AwayTeamCode;
+        var name = home ? m.HomeTeamName : m.AwayTeamName;
         var score = home ? m.HomeScore : m.AwayScore;
         var oppScore = home ? m.AwayScore : m.HomeScore;
-        var isWin = score.HasValue && oppScore.HasValue && score > oppScore;
-        var label = !string.IsNullOrEmpty(code) ? code : "—";
+        var pen = home ? m.HomePenalties : m.AwayPenalties;
+        var oppPen = home ? m.AwayPenalties : m.HomePenalties;
+
+        bool isWin;
+        if (m.HasPenalties && score.HasValue && oppScore.HasValue && score == oppScore)
+            isWin = pen.HasValue && oppPen.HasValue && pen > oppPen;
+        else
+            isWin = score.HasValue && oppScore.HasValue && score > oppScore;
+
+        var label = LocalizationService.TeamName(name, code);
+
+        // Score display: "1 (4)" for penalty wins, or just "1" / "—"
+        string scoreText;
+        if (score.HasValue)
+        {
+            scoreText = m.HasPenalties ? $"{score} ({pen})" : score.ToString();
+        }
+        else
+        {
+            scoreText = "—";
+        }
 
         var row = new Grid { Margin = new Thickness(0, 1, 0, 1) };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -206,23 +291,59 @@ public partial class BracketView : UserControl
         var txt = new TextBlock { Text = label, FontSize = 11, FontWeight = isWin ? FontWeights.Bold : FontWeights.Normal, Foreground = isWin ? new SolidColorBrush(Colors.DarkGreen) : Brushes.Black, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 0, 0) };
         Grid.SetColumn(txt, 1); row.Children.Add(txt);
 
-        var sc = new TextBlock { Text = score?.ToString() ?? "—", FontSize = 11, FontWeight = FontWeights.Bold, Width = 22, TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        var sc = new TextBlock { Text = scoreText, FontSize = 10, FontWeight = isWin ? FontWeights.Bold : FontWeights.Normal, MinWidth = 26, TextAlignment = TextAlignment.Left, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(sc, 2); row.Children.Add(sc);
         return row;
     }
 
     private void RenderTrophy(double cx, double cy)
     {
-        var t = new Canvas { Width = 180, Height = 130 };
-        t.Children.Add(new Rectangle { Width = 50, Height = 8, Fill = Gold(), RadiusX = 2, RadiusY = 2 }); Canvas.SetLeft(t.Children[^1], 65); Canvas.SetTop(t.Children[^1], 117);
-        t.Children.Add(new Rectangle { Width = 8, Height = 40, Fill = Gold() }); Canvas.SetLeft(t.Children[^1], 86); Canvas.SetTop(t.Children[^1], 77);
-        t.Children.Add(new Ellipse { Width = 55, Height = 50, Fill = Gold(), Stroke = DarkGold(), StrokeThickness = 2 }); Canvas.SetLeft(t.Children[^1], 62); Canvas.SetTop(t.Children[^1], 28);
-        t.Children.Add(new Ellipse { Width = 30, Height = 30, Stroke = DarkGold(), StrokeThickness = 1 }); Canvas.SetLeft(t.Children[^1], 75); Canvas.SetTop(t.Children[^1], 38);
-        t.Children.Add(new Ellipse { Width = 22, Height = 24, Fill = Gold(), Stroke = DarkGold(), StrokeThickness = 1.5 }); Canvas.SetLeft(t.Children[^1], 79); Canvas.SetTop(t.Children[^1], 5);
-        Canvas.SetLeft(t, cx); Canvas.SetTop(t, cy); Canvas.Children.Add(t);
-        var lb = new TextBlock { Text = "CHAMPION", FontSize = 14, FontWeight = FontWeights.Bold, Foreground = Gold(), Width = 180, TextAlignment = TextAlignment.Center };
-        Canvas.SetLeft(lb, cx); Canvas.SetTop(lb, cy + 135); Canvas.Children.Add(lb);
+        var g = new SolidColorBrush(Color.FromRgb(0xd4, 0xb0, 0x42));
+        var gd = new SolidColorBrush(Color.FromRgb(0xb0, 0x8a, 0x28));
+        var gl = new SolidColorBrush(Color.FromRgb(0xf0, 0xd8, 0x68));
+        var mg = new SolidColorBrush(Color.FromRgb(0x2e, 0x6b, 0x4e));
+        var c = new Canvas { Width = 100, Height = 170 };
+
+        // Globe
+        c.Children.Add(new Ellipse { Width = 18, Height = 18, Fill = gl, Stroke = gd, StrokeThickness = 1 }); Canvas.SetLeft(c.Children[^1], 41); Canvas.SetTop(c.Children[^1], 0);
+        // Globe band
+        c.Children.Add(new Rectangle { Width = 18, Height = 4, Fill = g, Opacity = 0.5 }); Canvas.SetLeft(c.Children[^1], 41); Canvas.SetTop(c.Children[^1], 7);
+        // Globe stem
+        c.Children.Add(new Rectangle { Width = 2, Height = 5, Fill = gd }); Canvas.SetLeft(c.Children[^1], 49); Canvas.SetTop(c.Children[^1], 18);
+
+        // Left wing figure
+        c.Children.Add(new Path { Data = Geometry.Parse("M 38,60 C 33,55 28,48 26,40 C 24,33 27,28 33,27 C 37,27 40,31 43,36 C 45,40 45,47 43,54 C 41,59 38,60 38,60 Z"), Fill = g, Stroke = gd, StrokeThickness = 0.7 });
+        // Right wing figure
+        c.Children.Add(new Path { Data = Geometry.Parse("M 62,60 C 67,55 72,48 74,40 C 76,33 73,28 67,27 C 63,27 60,31 57,36 C 55,40 55,47 57,54 C 59,59 62,60 62,60 Z"), Fill = g, Stroke = gd, StrokeThickness = 0.7 });
+
+        // Cup body
+        c.Children.Add(new Path { Data = Geometry.Parse("M 33,60 C 33,48 36,38 42,34 C 45,32 49,28 50,25 L 50,25 C 51,28 55,32 58,34 C 64,38 67,48 67,60 C 67,67 65,72 62,75 L 38,75 C 35,72 33,67 33,60 Z"), Fill = g, Stroke = gd, StrokeThickness = 1 });
+        // Cup highlight
+        c.Children.Add(new Path { Data = Geometry.Parse("M 39,62 C 39,54 42,46 47,43 L 50,43 C 45,46 43,52 43,62 C 43,66 44,70 42,72 L 40,72 C 39,69 39,65 39,62 Z"), Fill = gl, Opacity = 0.3 });
+
+        // Stem
+        c.Children.Add(new Path { Data = Geometry.Parse("M 45,75 L 55,75 L 53,90 L 51,96 L 49,96 L 47,90 Z"), Fill = g, Stroke = gd, StrokeThickness = 0.7 });
+        // Stem ring
+        c.Children.Add(new Rectangle { Width = 18, Height = 5, Fill = gl, Stroke = gd, StrokeThickness = 0.7, RadiusX = 1, RadiusY = 1 }); Canvas.SetLeft(c.Children[^1], 41); Canvas.SetTop(c.Children[^1], 79);
+
+        // Base — 5 tiers (gold + malachite)
+        c.Children.Add(new Rectangle { Width = 30, Height = 6, Fill = g, Stroke = gd, StrokeThickness = 0.7, RadiusX = 1, RadiusY = 1 }); Canvas.SetLeft(c.Children[^1], 35); Canvas.SetTop(c.Children[^1], 95);
+        c.Children.Add(new Rectangle { Width = 36, Height = 7, Fill = mg, RadiusX = 1, RadiusY = 1 }); Canvas.SetLeft(c.Children[^1], 32); Canvas.SetTop(c.Children[^1], 101);
+        c.Children.Add(new Rectangle { Width = 42, Height = 6, Fill = g, Stroke = gd, StrokeThickness = 0.7, RadiusX = 1, RadiusY = 1 }); Canvas.SetLeft(c.Children[^1], 29); Canvas.SetTop(c.Children[^1], 108);
+        c.Children.Add(new Rectangle { Width = 48, Height = 7, Fill = mg, RadiusX = 1, RadiusY = 1 }); Canvas.SetLeft(c.Children[^1], 26); Canvas.SetTop(c.Children[^1], 114);
+        c.Children.Add(new Rectangle { Width = 54, Height = 6, Fill = g, Stroke = gd, StrokeThickness = 0.7, RadiusX = 2, RadiusY = 2 }); Canvas.SetLeft(c.Children[^1], 23); Canvas.SetTop(c.Children[^1], 121);
+        // Bottom rim
+        c.Children.Add(new Rectangle { Width = 58, Height = 3, Fill = gd, RadiusX = 1, RadiusY = 1 }); Canvas.SetLeft(c.Children[^1], 21); Canvas.SetTop(c.Children[^1], 127);
+
+        // Globe sparkle
+        c.Children.Add(new Ellipse { Width = 4, Height = 3, Fill = Brushes.White, Opacity = 0.5 }); Canvas.SetLeft(c.Children[^1], 45); Canvas.SetTop(c.Children[^1], 3);
+
+        Canvas.SetLeft(c, cx - 50); Canvas.SetTop(c, cy); Canvas.Children.Add(c);
+
+        // Labels
+        var t1 = new TextBlock { Text = LocalizationService.T("FifaWorldCup"), FontSize = 12, FontWeight = FontWeights.Bold, Foreground = gd, Width = 180, TextAlignment = TextAlignment.Center };
+        Canvas.SetLeft(t1, cx - 90); Canvas.SetTop(t1, cy + 134); Canvas.Children.Add(t1);
+        var t2 = new TextBlock { Text = LocalizationService.T("Champion"), FontSize = 10, Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x88)), Width = 180, TextAlignment = TextAlignment.Center };
+        Canvas.SetLeft(t2, cx - 90); Canvas.SetTop(t2, cy + 150); Canvas.Children.Add(t2);
     }
-    private static SolidColorBrush Gold() => new(Color.FromRgb(0xc8, 0xa9, 0x51));
-    private static SolidColorBrush DarkGold() => new(Color.FromRgb(0xa0, 0x85, 0x35));
 }

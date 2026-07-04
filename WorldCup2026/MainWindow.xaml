@@ -29,10 +29,10 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="FIFA WORLD CUP 2026™"
+                    <TextBlock x:Name="HeaderTitle"
                                FontSize="20" FontWeight="Bold"
                                Foreground="White" VerticalAlignment="Center" />
-                    <TextBlock Text="CANADA • MEXICO • USA"
+                    <TextBlock x:Name="HeaderSub"
                                FontSize="13" Foreground="{StaticResource AccentBrush}"
                                VerticalAlignment="Center" Margin="15,0,0,0" />
                 </StackPanel>
@@ -45,6 +45,9 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="LangBtn" Content="EN"
+                            Style="{StaticResource ToolbarButton}"
+                            Margin="0,0,5,0" />
                     <Button x:Name="RefreshBtn" Content="Refresh"
                             Style="{StaticResource ToolbarButton}"
                             Margin="0,0,5,0" />
@@ -68,11 +71,8 @@
                         Padding="12" Margin="0,0,0,10"
                         BorderBrush="#e0e0e0" BorderThickness="1">
                     <StackPanel>
-                        <TextBlock Text="Knockout Stage Bracket" Style="{StaticResource SectionTitle}" />
-                        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto"
-                                      MaxHeight="800">
-                            <views:BracketView x:Name="BracketSection" />
-                        </ScrollViewer>
+                        <TextBlock x:Name="KnockoutTitleLabel" Style="{StaticResource SectionTitle}" />
+                        <views:BracketView x:Name="BracketSection" />
                     </StackPanel>
                 </Border>
 
@@ -81,7 +81,7 @@
                         Padding="12" Margin="0,0,0,10"
                         BorderBrush="#e0e0e0" BorderThickness="1">
                     <StackPanel>
-                        <TextBlock Text="Group Stage Results" Style="{StaticResource SectionTitle}" />
+                        <TextBlock x:Name="GroupTitleLabel" Style="{StaticResource SectionTitle}" />
                         <views:GroupStageView x:Name="GroupSection" />
                     </StackPanel>
                 </Border>

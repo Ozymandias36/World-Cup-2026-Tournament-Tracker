@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Text.Json;
@@ -37,8 +38,9 @@ public class LocalDataService : IDataService
             _cachedTeams = wrapper?.Teams?.Select(t => new Team
             {
                 Id = t.Id,
-                Name = t.NameEn ?? string.Empty,
+                Name = t.NameZh ?? t.NameEn ?? string.Empty,
                 NameEn = t.NameEn ?? string.Empty,
+                NameZh = t.NameZh ?? string.Empty,
                 FifaCode = t.FifaCode ?? string.Empty,
                 FlagUrl = t.Flag ?? string.Empty,
                 Group = t.Group ?? string.Empty
@@ -113,10 +115,13 @@ public class LocalDataService : IDataService
                     AwayFlagUrl = at?.FlagUrl ?? "",
                     HomeScore = m.TryGetProperty("home_score", out var hs) && hs.ValueKind == JsonValueKind.Number ? hs.GetInt32() : null,
                     AwayScore = m.TryGetProperty("away_score", out var aws) && aws.ValueKind == JsonValueKind.Number ? aws.GetInt32() : null,
+                    HomePenalties = m.TryGetProperty("home_penalty", out var hp) && hp.ValueKind == JsonValueKind.Number ? hp.GetInt32() : null,
+                    AwayPenalties = m.TryGetProperty("away_penalty", out var ap) && ap.ValueKind == JsonValueKind.Number ? ap.GetInt32() : null,
                     Stage = stage,
                     Group = m.TryGetProperty("group", out var g) ? g.GetString() ?? "" : "",
                     Matchday = m.TryGetProperty("matchday", out var md) && md.TryGetInt32(out var mdv) ? mdv : 1,
-                    DateTime = m.TryGetProperty("date", out var dt) && DateTime.TryParse(dt.GetString(), out var d) ? d : null,
+                    DateTime = m.TryGetProperty("date", out var dt) && DateTime.TryParseExact(dt.GetString(), "MM/dd/yyyy HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : null,
+                    UtcOffsetHours = m.TryGetProperty("utc_offset", out var uo) && uo.ValueKind == JsonValueKind.Number ? uo.GetDouble() : null,
                     Status = m.TryGetProperty("finished", out var f) && f.GetBoolean() ? "FINISHED" : "SCHEDULED"
                 });
             }
@@ -184,19 +189,42 @@ public class LocalDataService : IDataService
 
     private static async Task<string?> LoadFileAsync(string dir, string filename)
     {
+        // 1. Try file on disk (debug mode)
         var filePath = Path.Combine(AppContext.BaseDirectory, dir, filename);
         if (File.Exists(filePath))
             return await File.ReadAllTextAsync(filePath);
+
+        // 2. Try embedded resource (single-file publish)
+        var asm = typeof(LocalDataService).Assembly;
+        var resName = $"{asm.GetName().Name}.{dir}.{filename}".Replace("/", ".").Replace("\\", ".");
+        using var stream = asm.GetManifestResourceStream(resName);
+        if (stream != null)
+        {
+            using var reader = new StreamReader(stream);
+            return await reader.ReadToEndAsync();
+        }
+
         return null;
     }
 
     private static async Task<string> LoadEmbeddedResourceAsync(string name)
     {
+        // 1. Try file on disk (debug mode)
         var filePath = Path.Combine(AppContext.BaseDirectory, name);
         if (File.Exists(filePath))
             return await File.ReadAllTextAsync(filePath);
 
-        throw new FileNotFoundException($"Data file '{filePath}' not found");
+        // 2. Try embedded resource (single-file publish)
+        var asm = typeof(LocalDataService).Assembly;
+        var resName = $"{asm.GetName().Name}.{name}".Replace("/", ".").Replace("\\", ".");
+        using var stream = asm.GetManifestResourceStream(resName);
+        if (stream != null)
+        {
+            using var reader = new StreamReader(stream);
+            return await reader.ReadToEndAsync();
+        }
+
+        throw new FileNotFoundException($"Data file '{name}' not found on disk or in embedded resources");
     }
 }
 
@@ -206,6 +234,7 @@ public class LocalTeam
 {
     public int Id { get; set; }
     [JsonPropertyName("name_en")] public string? NameEn { get; set; }
+    [JsonPropertyName("name_zh")] public string? NameZh { get; set; }
     [JsonPropertyName("fifa_code")] public string? FifaCode { get; set; }
     [JsonPropertyName("flag")] public string? Flag { get; set; }
     [JsonPropertyName("group")] public string? Group { get; set; }

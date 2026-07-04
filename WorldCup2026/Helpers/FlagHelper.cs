@@ -59,40 +59,71 @@ public static class FlagHelper
     }
 
     /// <summary>
+    /// Load raw PNG bytes for a flag (disk first, then embedded resource fallback).
+    /// Shared by WPF UI rendering and PDF export.
+    /// </summary>
+    public static byte[]? GetFlagPngBytes(string? fifaCode)
+    {
+        var iso = GetIso2(fifaCode ?? "");
+        if (string.IsNullOrEmpty(iso)) return null;
+
+        var dir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "Flags");
+        var path = System.IO.Path.Combine(dir, $"{iso.ToLowerInvariant()}.png");
+
+        // 1. Try file on disk (debug mode)
+        if (System.IO.File.Exists(path))
+        {
+            try { return System.IO.File.ReadAllBytes(path); }
+            catch { }
+        }
+
+        // 2. Try embedded resource (single-file publish)
+        var asm = typeof(FlagHelper).Assembly;
+        var resName = $"{asm.GetName().Name}.Resources.Flags.{iso.ToLowerInvariant()}.png";
+        using var stream = asm.GetManifestResourceStream(resName);
+        if (stream != null)
+        {
+            try
+            {
+                using var ms = new System.IO.MemoryStream();
+                stream.CopyTo(ms);
+                return ms.ToArray();
+            }
+            catch { }
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Create an Image control for a flag from FIFA code.
-    /// Loads from local Resources/Flags/ directory (copied to output).
     /// Falls back to text if image not found.
     /// </summary>
     public static FrameworkElement CreateFlagImage(string? fifaCode, double w = 20, double h = 14)
     {
-        var iso = GetIso2(fifaCode ?? "");
         var code = fifaCode ?? "?";
+        var bytes = GetFlagPngBytes(fifaCode);
 
-        if (!string.IsNullOrEmpty(iso))
+        if (bytes != null)
         {
-            var dir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "Flags");
-            var path = System.IO.Path.Combine(dir, $"{iso.ToLowerInvariant()}.png");
-
-            if (System.IO.File.Exists(path))
+            try
             {
-                try
-                {
-                    var bmp = new System.Windows.Media.Imaging.BitmapImage();
-                    bmp.BeginInit();
-                    bmp.UriSource = new Uri(path);
-                    bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
-                    bmp.EndInit();
+                var bmp = new System.Windows.Media.Imaging.BitmapImage();
+                bmp.BeginInit();
+                bmp.StreamSource = new System.IO.MemoryStream(bytes);
+                bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                bmp.EndInit();
+                bmp.Freeze();
 
-                    return new System.Windows.Controls.Image
-                    {
-                        Width = w, Height = h,
-                        Source = bmp,
-                        Stretch = System.Windows.Media.Stretch.UniformToFill,
-                        Margin = new System.Windows.Thickness(0, 0, 4, 0)
-                    };
-                }
-                catch { }
+                return new System.Windows.Controls.Image
+                {
+                    Width = w, Height = h,
+                    Source = bmp,
+                    Stretch = System.Windows.Media.Stretch.UniformToFill,
+                    Margin = new System.Windows.Thickness(0, 0, 4, 0)
+                };
             }
+            catch { }
         }
 
         // Fallback: show colored code text

@@ -77,7 +77,9 @@ public partial class BracketViewModel : ObservableObject
         return (upper, lower);
     }
 
-    public void Refresh() => OnPropertyChanged(string.Empty); // triggers all bindings
+    public Match? GetThirdPlaceMatch() => _aggregator.Matches.FirstOrDefault(m => m.Stage == TournamentStage.ThirdPlace);
+
+    public void Refresh() => OnPropertyChanged(string.Empty);
 }
 
 public class BracketRound

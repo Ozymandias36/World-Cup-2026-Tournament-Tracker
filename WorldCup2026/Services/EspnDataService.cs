@@ -106,12 +106,12 @@ public class EspnDataService : IDataService
         var homeTeam = home?.TryGetProperty("team", out var ht) == true ? ht : default;
         var awayTeam = away?.TryGetProperty("team", out var at) == true ? at : default;
 
-        // Parse score — could be string or int in JSON
-        int? ParseScore(JsonElement? comp)
+        // Parse score or shootoutScore — accepts string or number
+        int? ParseIntField(JsonElement? comp, string field)
         {
             if (comp == null) return null;
             var el = comp.Value;
-            if (!el.TryGetProperty("score", out var s)) return null;
+            if (!el.TryGetProperty(field, out var s)) return null;
             if (s.ValueKind == JsonValueKind.String && int.TryParse(s.GetString(), out var si)) return si;
             if (s.ValueKind == JsonValueKind.Number && s.TryGetInt32(out var ni)) return ni;
             return null;
@@ -139,6 +139,10 @@ public class EspnDataService : IDataService
                 matchDate = dt;
         }
 
+        // shootoutScore is only populated when the match was decided by penalties
+        var homePen = ParseIntField(home, "shootoutScore");
+        var awayPen = ParseIntField(away, "shootoutScore");
+
         return new Match
         {
             Id = e.TryGetProperty("id", out var idEl) ? (idEl.ValueKind == JsonValueKind.String ? 0 : (idEl.TryGetInt32(out var iid) ? iid : 0)) : 0,
@@ -146,8 +150,10 @@ public class EspnDataService : IDataService
             AwayTeamName = awayTeam.ValueKind != JsonValueKind.Undefined && awayTeam.TryGetProperty("displayName", out var adn) ? adn.GetString() : "TBD",
             HomeTeamCode = homeTeam.ValueKind != JsonValueKind.Undefined && homeTeam.TryGetProperty("abbreviation", out var hab) ? hab.GetString() : null,
             AwayTeamCode = awayTeam.ValueKind != JsonValueKind.Undefined && awayTeam.TryGetProperty("abbreviation", out var aab) ? aab.GetString() : null,
-            HomeScore = ParseScore(home),
-            AwayScore = ParseScore(away),
+            HomeScore = ParseIntField(home, "score"),
+            AwayScore = ParseIntField(away, "score"),
+            HomePenalties = homePen,
+            AwayPenalties = awayPen,
             Stage = ParseStageFromRound(compTypeText),
             Group = groupName ?? "",
             DateTime = matchDate,
@@ -207,9 +213,10 @@ public class EspnDataService : IDataService
     {
         return status?.ToUpperInvariant() switch
         {
-            "STATUS_FINAL" => "FINISHED",
-            "STATUS_IN_PROGRESS" => "LIVE",
-            "STATUS_SCHEDULED" => "SCHEDULED",
+            "STATUS_FINAL" or "STATUS_FINAL_PEN" or "STATUS_FINAL_AET" => "FINISHED",
+            "STATUS_IN_PROGRESS" or "STATUS_FIRST_HALF" or "STATUS_SECOND_HALF"
+                or "STATUS_HALFTIME" or "STATUS_EXTRA_TIME" or "STATUS_SHOOTOUT" => "LIVE",
+            "STATUS_SCHEDULED" or "STATUS_TIMED" => "SCHEDULED",
             _ => "SCHEDULED"
         };
     }
