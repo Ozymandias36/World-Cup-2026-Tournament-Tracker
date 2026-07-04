@@ -207,7 +207,8 @@ public class FifaApiService : IDataService
             // MatchTime "FT"/"AET"/"Pen" also signals finished — covers the window where
             // Winner arrives slightly later than the score in the FIFA feed.
             else if (statusStr is "FT" or "AET" or "Pen" or "Penalties" or "PENALTY" or "FinalScore") status = "FINISHED";
-            else if (statusStr != null && (statusStr.Contains("'") || statusStr == "HT")) status = "LIVE";
+            // Only mark LIVE when there is a score — scheduled matches can also return MatchTime "0'"
+            else if (homeScore.HasValue && statusStr != null && (statusStr.Contains("'") || statusStr == "HT")) status = "LIVE";
 
             var stadium = r.TryGetProperty("Stadium", out var st) ? st : default;
             var stadiumName = stadium.ValueKind != JsonValueKind.Undefined && stadium.TryGetProperty("Name", out var sn) ? GetLocalizedName(stadium, "Name") : null;
