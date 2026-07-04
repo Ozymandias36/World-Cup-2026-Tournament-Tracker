@@ -37,6 +37,8 @@ public partial class MainWindow : Window
     private void ApplyLocalization()
     {
         Title = LocalizationService.T("AppTitle");
+        HeaderTitle.Text = LocalizationService.T("HeaderTitle");
+        HeaderSub.Text = LocalizationService.T("HeaderSub");
         LangBtn.Content = LocalizationService.T("Language");
         RefreshBtn.Content = LocalizationService.T("Refresh");
         ExportBtn.Content = "📥 " + LocalizationService.T("ExportPdf");

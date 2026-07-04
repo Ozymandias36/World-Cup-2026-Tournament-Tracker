@@ -25,13 +25,13 @@ public partial class App : Application
         services.AddSingleton<LocalDataService>();
         services.AddTransient<IDataService>(sp => sp.GetRequiredService<LocalDataService>());
 
-        // 2. FIFA Official API — sole live data source
+        // 2. FIFA Official API — scores, penalty shootout data, team names
         services.AddHttpClient<FifaApiService>(client =>
         {
             client.BaseAddress = new Uri("https://api.fifa.com");
             client.DefaultRequestHeaders.Add("User-Agent", "WorldCup2026-App/1.0");
             client.DefaultRequestHeaders.Add("Accept", "application/json");
-            client.Timeout = TimeSpan.FromSeconds(10);
+            client.Timeout = TimeSpan.FromSeconds(15);
         });
         services.AddTransient<IDataService>(sp => sp.GetRequiredService<FifaApiService>());
 

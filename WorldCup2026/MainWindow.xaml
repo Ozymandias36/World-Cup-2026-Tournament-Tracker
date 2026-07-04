@@ -29,10 +29,10 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="FIFA WORLD CUP 2026™"
+                    <TextBlock x:Name="HeaderTitle"
                                FontSize="20" FontWeight="Bold"
                                Foreground="White" VerticalAlignment="Center" />
-                    <TextBlock Text="CANADA • MEXICO • USA"
+                    <TextBlock x:Name="HeaderSub"
                                FontSize="13" Foreground="{StaticResource AccentBrush}"
                                VerticalAlignment="Center" Margin="15,0,0,0" />
                 </StackPanel>

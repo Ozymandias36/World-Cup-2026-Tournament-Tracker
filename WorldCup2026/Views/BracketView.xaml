@@ -6,12 +6,14 @@
              mc:Ignorable="d"
              d:DesignHeight="600" d:DesignWidth="1600">
     <Grid>
-        <Canvas x:Name="Canvas" Background="Transparent"
-                HorizontalAlignment="Center">
-            <TextBlock x:Name="EmptyState"
-                       FontSize="16" Foreground="Gray"
-                       Canvas.Left="400" Canvas.Top="200"
-                       Visibility="Collapsed" />
-        </Canvas>
+        <Viewbox Stretch="Uniform" StretchDirection="DownOnly"
+                 HorizontalAlignment="Center" VerticalAlignment="Top">
+            <Canvas x:Name="Canvas" Background="Transparent">
+                <TextBlock x:Name="EmptyState"
+                           FontSize="16" Foreground="Gray"
+                           Canvas.Left="400" Canvas.Top="200"
+                           Visibility="Collapsed" />
+            </Canvas>
+        </Viewbox>
     </Grid>
 </UserControl>

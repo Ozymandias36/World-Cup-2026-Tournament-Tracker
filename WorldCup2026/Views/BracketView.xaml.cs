@@ -200,17 +200,51 @@ public partial class BracketView : UserControl
         var bg = m.IsFinished ? Color.FromRgb(0xf8, 0xf8, 0xf8) : Colors.White;
         var b = new Border { Width = MatchW, Background = new SolidColorBrush(bg), BorderBrush = new SolidColorBrush(accent), BorderThickness = new Thickness(1.5), CornerRadius = new CornerRadius(4), Tag = m };
         var p = new StackPanel { Margin = new Thickness(4, 2, 4, 2) };
+
+        if (m.IsLive)
+        {
+            var liveText = LocalizationService.T("Live");
+            if (m.TimeElapsed.HasValue) liveText += $" {m.TimeElapsed}'";
+            p.Children.Add(new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(0xcc, 0x00, 0x00)),
+                CornerRadius = new CornerRadius(2, 2, 0, 0),
+                Margin = new Thickness(-4, -2, -4, 2),
+                Child = new TextBlock
+                {
+                    Text = liveText,
+                    FontSize = 7.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = Brushes.White,
+                    TextAlignment = TextAlignment.Center,
+                    Padding = new Thickness(2, 1, 2, 1)
+                }
+            });
+        }
+
         p.Children.Add(Row(m, true));
         p.Children.Add(new Rectangle { Height = 1, Fill = Brushes.LightGray, Margin = new Thickness(0, 1, 0, 1) });
         p.Children.Add(Row(m, false));
 
-        // Beijing time
+        // Match time
         if (m.DateTime.HasValue)
         {
             double off = m.UtcOffsetHours ?? 0;
-            var bjt = m.DateTime.Value.AddHours(-off + 8);
+            DateTime displayTime;
+            string tzLabel;
+            if (LocalizationService.Current == AppLanguage.Chinese)
+            {
+                displayTime = m.DateTime.Value.AddHours(-off + 8);
+                tzLabel = "UTC+8";
+            }
+            else
+            {
+                displayTime = m.DateTime.Value;
+                int h = (int)off;
+                tzLabel = m.UtcOffsetHours.HasValue ? (h >= 0 ? $"UTC+{h}" : $"UTC{h}") : "UTC";
+            }
             p.Children.Add(new Rectangle { Height = 1, Fill = Brushes.LightGray, Margin = new Thickness(0, 2, 0, 0) });
-            p.Children.Add(new TextBlock { Text = $"{LocalizationService.T("BeijingTime")} {bjt:MM/dd HH:mm}", FontSize = 8, Foreground = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66)), TextAlignment = TextAlignment.Center, Margin = new Thickness(0, 1, 0, 0) });
+            p.Children.Add(new TextBlock { Text = $"{tzLabel} {displayTime:MM/dd HH:mm}", FontSize = 8, Foreground = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66)), TextAlignment = TextAlignment.Center, Margin = new Thickness(0, 1, 0, 0) });
         }
 
         b.Child = p;

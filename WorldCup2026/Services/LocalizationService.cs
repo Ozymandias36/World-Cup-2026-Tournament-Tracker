@@ -11,7 +11,7 @@ public enum AppLanguage { Chinese, English }
 /// </summary>
 public static class LocalizationService
 {
-    public static AppLanguage Current { get; private set; } = AppLanguage.Chinese;
+    public static AppLanguage Current { get; private set; } = AppLanguage.English;
 
     public static event Action? LanguageChanged;
 
@@ -42,6 +42,8 @@ public static class LocalizationService
     private static readonly Dictionary<string, (string Zh, string En)> Strings = new()
     {
         ["AppTitle"] = ("FIFA世界杯2026™ — 赛事追踪", "FIFA World Cup 2026™ — Tournament Tracker"),
+        ["HeaderTitle"] = ("2026美加墨世界杯", "FIFA WORLD CUP 2026™"),
+        ["HeaderSub"] = ("", "CANADA • MEXICO • USA"),
         ["Refresh"] = ("刷新", "Refresh"),
         ["AutoOn"] = ("自动: 开", "Auto: ON"),
         ["AutoOff"] = ("自动: 关", "Auto: OFF"),
@@ -62,8 +64,8 @@ public static class LocalizationService
         ["ColGA"] = ("失", "GA"),
         ["ColGD"] = ("净", "GD"),
         ["ColPts"] = ("积", "Pts"),
-        ["BeijingTime"] = ("北京", "BJT"),
-        ["Live"] = ("直播", "LIVE"),
+        ["BeijingTime"] = ("UTC+8", "UTC+8"),
+        ["Live"] = ("进行中", "LIVE"),
         ["Champion"] = ("冠军 2026™", "CHAMPION 2026™"),
         ["FifaWorldCup"] = ("FIFA世界杯", "FIFA WORLD CUP"),
         ["PdfMainTitle"] = ("2026年美加墨世界杯赛程", "2026 FIFA World Cup — Canada · Mexico · USA"),

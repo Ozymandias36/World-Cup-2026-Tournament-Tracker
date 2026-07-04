@@ -143,9 +143,14 @@ public class DataServiceAggregator
     /// </summary>
     private static Match? FindByCode(IEnumerable<Match> existing, Match api)
     {
+        // Some APIs (e.g. ESPN scoreboard) cannot determine the stage — they return
+        // GroupStage with an empty group as the default. Treat that as "stage unknown"
+        // and skip the stage filter so knockout matches can still be overlaid.
+        bool apiStageKnown = api.Stage != TournamentStage.GroupStage || !string.IsNullOrEmpty(api.Group);
+
         foreach (var m in existing)
         {
-            if (m.Stage != api.Stage) continue;
+            if (apiStageKnown && m.Stage != api.Stage) continue;
             if (m.Stage == TournamentStage.GroupStage &&
                 !string.IsNullOrEmpty(m.Group) && !string.IsNullOrEmpty(api.Group) &&
                 !string.Equals(m.Group, api.Group, StringComparison.OrdinalIgnoreCase)) continue;
@@ -204,7 +209,8 @@ public class DataServiceAggregator
         bool wantWinner = string.Equals(match.Groups[1].Value, "Winner", StringComparison.OrdinalIgnoreCase);
         int refId = int.Parse(match.Groups[2].Value);
         if (!matchDict.TryGetValue(refId, out var refMatch)) return;
-        if (!refMatch.HomeScore.HasValue || !refMatch.AwayScore.HasValue) return; // ref match not finished
+        if (!refMatch.IsFinished) return; // only resolve after the match is officially finished
+        if (!refMatch.HomeScore.HasValue || !refMatch.AwayScore.HasValue) return;
 
         bool? homeWon = refMatch.HomeScore != refMatch.AwayScore
             ? refMatch.HomeScore > refMatch.AwayScore
@@ -226,7 +232,14 @@ public class DataServiceAggregator
     {
         // Scores
         if (api.HomeScore.HasValue) { existing.HomeScore = api.HomeScore; existing.AwayScore = api.AwayScore; }
-        if (api.HomePenalties.HasValue) { existing.HomePenalties = api.HomePenalties; existing.AwayPenalties = api.AwayPenalties; }
+        // Merge penalties: take whichever side the API provides, keep existing value for any null side.
+        // This handles feeds that populate only the winner's PenaltyScore, or deliver the two sides
+        // in separate calls.
+        if (api.HomePenalties.HasValue || api.AwayPenalties.HasValue)
+        {
+            existing.HomePenalties = api.HomePenalties ?? existing.HomePenalties;
+            existing.AwayPenalties = api.AwayPenalties ?? existing.AwayPenalties;
+        }
         // Status
         if (!string.IsNullOrEmpty(api.Status)) existing.Status = api.Status;
         // Team names (API overwrites placeholders like "Winner Match 80")
