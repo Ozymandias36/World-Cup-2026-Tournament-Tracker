@@ -96,27 +96,41 @@ public class DataServiceAggregator
                 }
             }
 
-            // Resolve "Winner Match N" / "Loser Match N" placeholders using local bracket
-            // results only (deterministic — no guessing against API data).
-            ResolvePlaceholders(matchDict);
+            // Group standings only depend on group-stage matches, which are never
+            // placeholders, so they're final as soon as the first overlay pass above
+            // has run and can drive Round-of-32 "Winner/Runner-up/Third-place Group X"
+            // resolution below.
+            mergedGroups = ComputeGroups(matchDict.Values.ToList(), mergedTeams);
 
-            // Second overlay pass: matches whose placeholders just resolved to real team
-            // codes can now be matched against the API safely (no more wildcards involved).
-            foreach (var matches in apiMatchLists)
+            // Resolve every placeholder kind ("Winner Group X" for R32, "Winner Match N"
+            // / "Loser Match N" for R16 onward) against local/live results only —
+            // deterministic, no guessing against fuzzy API name matches. Then re-overlay
+            // API data so matches that just got real codes can pick up their live score.
+            // Each pass can only advance the bracket by one round (a round's own score
+            // arrives one step after its own placeholder resolves), and there are at
+            // most 5 knockout rounds after the groups, so a handful of passes always
+            // converges to a fixed point.
+            for (int pass = 0; pass < 8; pass++)
             {
-                foreach (var m in matches)
+                bool changed = ResolveGroupPlaceholders(matchDict, mergedGroups);
+                changed |= ResolvePlaceholders(matchDict);
+
+                bool overlaid = false;
+                foreach (var matches in apiMatchLists)
                 {
-                    if (string.IsNullOrEmpty(m.HomeTeamCode) || string.IsNullOrEmpty(m.AwayTeamCode)) continue;
-                    var target = FindByCode(matchDict.Values, m);
-                    if (target != null) { OverlayApiData(target, m); hasLive = true; }
+                    foreach (var m in matches)
+                    {
+                        if (string.IsNullOrEmpty(m.HomeTeamCode) || string.IsNullOrEmpty(m.AwayTeamCode)) continue;
+                        var target = FindByCode(matchDict.Values, m);
+                        if (target != null && !target.IsFinished) { OverlayApiData(target, m); hasLive = true; overlaid = true; }
+                    }
                 }
+                if (!changed && !overlaid) break;
             }
 
             // Team names stay canonical English on the data model; display-time
             // translation happens in the views via LocalizationService.TeamName().
             var mergedMatches = matchDict.Values.OrderBy(m => m.Id).ToList();
-
-            mergedGroups = ComputeGroups(mergedMatches, mergedTeams);
 
             if (mergedMatches.Count > 0)
             {
@@ -184,48 +198,103 @@ public class DataServiceAggregator
     private static readonly System.Text.RegularExpressions.Regex PlaceholderRegex =
         new(@"^(Winner|Loser) Match (\d+)$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
 
+    private static readonly System.Text.RegularExpressions.Regex GroupPlaceholderRegex =
+        new(@"^(Winner|Runner-up|Third-place) Group ([A-L])$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
+
     /// <summary>
     /// Fill in "Winner Match N" / "Loser Match N" placeholders using the actual result
     /// of local match N. Runs in ascending match-ID order, which in this tournament's
     /// numbering always places a round's feeder matches at lower IDs than the round
     /// itself, so a single pass fully propagates advancement through the bracket.
+    /// Returns true if any placeholder was resolved this pass.
     /// </summary>
-    private static void ResolvePlaceholders(Dictionary<int, Match> matchDict)
+    private static bool ResolvePlaceholders(Dictionary<int, Match> matchDict)
     {
+        bool any = false;
         foreach (var m in matchDict.Values.OrderBy(x => x.Id))
         {
-            ResolveSide(m, matchDict, home: true);
-            ResolveSide(m, matchDict, home: false);
+            any |= ResolveSide(m, matchDict, home: true);
+            any |= ResolveSide(m, matchDict, home: false);
         }
+        return any;
     }
 
-    private static void ResolveSide(Match m, Dictionary<int, Match> matchDict, bool home)
+    private static bool ResolveSide(Match m, Dictionary<int, Match> matchDict, bool home)
     {
         var name = home ? m.HomeTeamName : m.AwayTeamName;
-        if (string.IsNullOrEmpty(name)) return;
+        if (string.IsNullOrEmpty(name)) return false;
         RegexMatch match = PlaceholderRegex.Match(name);
-        if (!match.Success) return;
+        if (!match.Success) return false;
 
         bool wantWinner = string.Equals(match.Groups[1].Value, "Winner", StringComparison.OrdinalIgnoreCase);
         int refId = int.Parse(match.Groups[2].Value);
-        if (!matchDict.TryGetValue(refId, out var refMatch)) return;
-        if (!refMatch.IsFinished) return; // only resolve after the match is officially finished
-        if (!refMatch.HomeScore.HasValue || !refMatch.AwayScore.HasValue) return;
+        if (!matchDict.TryGetValue(refId, out var refMatch)) return false;
+        if (!refMatch.IsFinished) return false; // only resolve after the match is officially finished
+        if (!refMatch.HomeScore.HasValue || !refMatch.AwayScore.HasValue) return false;
 
         bool? homeWon = refMatch.HomeScore != refMatch.AwayScore
             ? refMatch.HomeScore > refMatch.AwayScore
             : (refMatch.HomePenalties.HasValue && refMatch.AwayPenalties.HasValue
                 ? refMatch.HomePenalties > refMatch.AwayPenalties
                 : (bool?)null);
-        if (homeWon == null) return; // drawn with no penalty decision yet
+        if (homeWon == null) return false; // drawn with no penalty decision yet
 
         bool takeHome = wantWinner ? homeWon.Value : !homeWon.Value;
         var resolvedName = takeHome ? refMatch.HomeTeamName : refMatch.AwayTeamName;
         var resolvedCode = takeHome ? refMatch.HomeTeamCode : refMatch.AwayTeamCode;
-        if (string.IsNullOrEmpty(resolvedName)) return;
+        if (string.IsNullOrEmpty(resolvedName)) return false;
 
         if (home) { m.HomeTeamName = resolvedName; m.HomeTeamCode = resolvedCode; }
         else { m.AwayTeamName = resolvedName; m.AwayTeamCode = resolvedCode; }
+        return true;
+    }
+
+    /// <summary>
+    /// Fill in "Winner Group X" / "Runner-up Group X" / "Third-place Group X" placeholders
+    /// (the Round-of-32 bracket slots) using live group standings. Which specific group
+    /// feeds which R32 slot is fixed by FIFA's tournament regulations before a ball is
+    /// kicked (Annex C for third-place slots) — that structural pairing is baked into the
+    /// fixture data below. The team occupying that slot is never hardcoded: it's read off
+    /// <see cref="ComputeGroups"/>'s live standings, and only once the group's 3 matchdays
+    /// are all finished (so an early group leader can't be locked in prematurely).
+    /// </summary>
+    private static bool ResolveGroupPlaceholders(Dictionary<int, Match> matchDict, List<Group> groups)
+    {
+        bool any = false;
+        foreach (var m in matchDict.Values)
+        {
+            any |= ResolveGroupSide(m, groups, home: true);
+            any |= ResolveGroupSide(m, groups, home: false);
+        }
+        return any;
+    }
+
+    private static bool ResolveGroupSide(Match m, List<Group> groups, bool home)
+    {
+        var name = home ? m.HomeTeamName : m.AwayTeamName;
+        if (string.IsNullOrEmpty(name)) return false;
+        RegexMatch match = GroupPlaceholderRegex.Match(name);
+        if (!match.Success) return false;
+
+        var kind = match.Groups[1].Value;
+        var groupName = match.Groups[2].Value;
+        var group = groups.FirstOrDefault(g => string.Equals(g.Name, groupName, StringComparison.OrdinalIgnoreCase));
+        if (group == null) return false;
+        if (group.Standings.Count == 0 || group.Standings.Any(s => s.Played < 3)) return false; // group not finished yet
+
+        int wantPosition = kind.Equals("Winner", StringComparison.OrdinalIgnoreCase) ? 1
+            : kind.Equals("Runner-up", StringComparison.OrdinalIgnoreCase) ? 2
+            : 3; // Third-place
+        var standing = group.Standings.FirstOrDefault(s => s.Position == wantPosition);
+        if (standing == null || string.IsNullOrEmpty(standing.TeamName)) return false;
+
+        // A group's 3rd-placed team only actually advances if it's one of the
+        // tournament-wide best 8 thirds (see MarkBestThirdPlace).
+        if (wantPosition == 3 && !standing.IsQualified) return false;
+
+        if (home) { m.HomeTeamName = standing.TeamName; m.HomeTeamCode = standing.TeamCode; }
+        else { m.AwayTeamName = standing.TeamName; m.AwayTeamCode = standing.TeamCode; }
+        return true;
     }
 
     private static void OverlayApiData(Match existing, Match api)
